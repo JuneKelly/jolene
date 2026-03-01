@@ -38,12 +38,18 @@ pub fn save(state: &State) -> Result<()> {
     Ok(())
 }
 
-/// Find a package by "Author/repo" or bare "repo" (errors if ambiguous).
+/// Find a package by its source identifier (exact match on `pkg.source`).
+///
+/// For GitHub packages, also supports a bare repo name (e.g. `"tools"` matches
+/// `"alice/tools"`). This short-name lookup is GitHub-specific: local paths and
+/// URLs always contain `/` and are matched exactly by the first branch, but their
+/// components have no meaningful short form.
 pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a PackageState>> {
     if name.contains('/') {
         return Ok(state.packages.iter().find(|p| p.source == name));
     }
 
+    // Short-name lookup: GitHub only. Matches the repo component (after the first `/`).
     let matches: Vec<_> = state
         .packages
         .iter()
@@ -56,7 +62,7 @@ pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a Packa
         _ => {
             let names: Vec<_> = matches.iter().map(|p| format!("  {}", p.source)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full Author/repo format.",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full owner/repo format.",
                 name,
                 names.join("\n")
             );
@@ -73,6 +79,7 @@ pub fn find_package_mut<'a>(
         return Ok(state.packages.iter_mut().find(|p| p.source == name));
     }
 
+    // Short-name lookup: GitHub only. See find_package for details.
     let matches: Vec<_> = state
         .packages
         .iter()
@@ -89,7 +96,7 @@ pub fn find_package_mut<'a>(
         _ => {
             let names: Vec<_> = matches.iter().map(|s| format!("  {}", s)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full Author/repo format.",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full owner/repo format.",
                 name,
                 names.join("\n")
             );
@@ -101,16 +108,18 @@ pub fn find_package_mut<'a>(
 mod tests {
     use chrono::Utc;
 
-    use crate::types::state::{PackageState, State};
+    use crate::types::source::Source;
+    use crate::types::state::{PackageState, SourceKind, State};
 
     use super::find_package;
 
     fn make_pkg(source: &str) -> PackageState {
+        let src = Source::from_github(source).unwrap();
         PackageState {
-            source_kind: "github".to_string(),
+            source_kind: SourceKind::GitHub,
             source: source.to_string(),
             clone_url: Some(format!("https://github.com/{}.git", source)),
-            clone_path: format!("repos/{}", source),
+            clone_path: format!("repos/{}", src.store_key()),
             branch: "main".to_string(),
             commit: "abc123".to_string(),
             installed_at: Utc::now(),

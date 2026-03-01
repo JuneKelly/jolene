@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{bail, Result};
 use chrono::Utc;
 
@@ -43,6 +45,12 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let store_key = pkg.store_key().to_owned();
     let installations: Vec<_> = pkg.installations.clone();
     let clone_root = clone_root_for(&pkg.clone_path)?;
+
+    let display_names: HashMap<String, String> = app_state
+        .packages
+        .iter()
+        .map(|p| (p.store_key().to_string(), p.source.clone()))
+        .collect();
 
     // 1. Pull — detect no-op early.
     let old_commit = git::full_commit(&clone_root)?;
@@ -118,6 +126,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             &target_root,
             inst.target.as_str(),
             &store_key,
+            &display_names,
         )?;
 
         let removals: Vec<String> = inst

@@ -24,7 +24,7 @@ pub enum Command {
 
     /// Uninstall a package
     Uninstall {
-        /// Package name in Author/repo or repo format
+        /// Package identifier: owner/repo (GitHub), absolute path (local), or URL
         package: String,
 
         /// Remove from specific targets only (repeatable). Defaults to all.
@@ -51,7 +51,7 @@ pub enum Command {
 
     /// Show detailed info about an installed package
     Info {
-        /// Package name in Author/repo or repo format
+        /// Package identifier: owner/repo (GitHub), absolute path (local), or URL
         package: String,
     },
 

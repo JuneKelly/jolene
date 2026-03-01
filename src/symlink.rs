@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ pub enum ConflictCheck {
     /// Destination is a jolene symlink from the same package — skip.
     AlreadyInstalled,
     /// Destination is a jolene symlink from a different package.
-    PackageConflict { owner: String },
+    PackageConflict { store_key: String },
     /// Destination exists but is not a jolene-managed symlink.
     UserConflict,
 }
@@ -30,11 +31,11 @@ pub fn check_conflict(dst: &Path, current_source: &str) -> Result<ConflictCheck>
 
         if is_jolene_symlink(&target)? {
             match package_from_symlink(&target) {
-                Some(owner) if owner == current_source => {
+                Some(key) if key == current_source => {
                     return Ok(ConflictCheck::AlreadyInstalled);
                 }
-                Some(owner) => {
-                    return Ok(ConflictCheck::PackageConflict { owner });
+                Some(key) => {
+                    return Ok(ConflictCheck::PackageConflict { store_key: key });
                 }
                 None => {}
             }
@@ -50,15 +51,13 @@ pub fn is_jolene_symlink(target: &Path) -> Result<bool> {
     Ok(target.starts_with(&root))
 }
 
-/// Extract "author/repo" from a path like ~/.jolene/repos/author/repo/...
+/// Extract the 64-char store-key hash from a path like ~/.jolene/repos/{hash}/...
 pub fn package_from_symlink(target: &Path) -> Option<String> {
     let root = jolene_root().ok()?;
     let repos = root.join("repos");
     let rel = target.strip_prefix(&repos).ok()?;
-    let mut parts = rel.components();
-    let author = parts.next()?.as_os_str().to_str()?;
-    let repo = parts.next()?.as_os_str().to_str()?;
-    Some(format!("{}/{}", author, repo))
+    let hash = rel.components().next()?.as_os_str().to_str()?;
+    Some(hash.to_string())
 }
 
 /// A planned symlink operation.
@@ -72,12 +71,16 @@ pub struct SymlinkPlan {
 
 /// Build the symlink plan for a set of content items, checking for conflicts.
 /// Returns an error on the first conflict encountered.
+///
+/// `display_names` maps store-key hashes to human-readable package names
+/// for use in conflict error messages.
 pub fn plan_symlinks(
     items: &[ContentItem],
     clone_root: &Path,
     target_root: &Path,
     target_slug: &str,
     package_source: &str,
+    display_names: &HashMap<String, String>,
 ) -> Result<Vec<SymlinkPlan>> {
     let mut plans = Vec::new();
 
@@ -95,12 +98,13 @@ pub fn plan_symlinks(
             ConflictCheck::AlreadyInstalled => {
                 // Already correct — skip silently.
             }
-            ConflictCheck::PackageConflict { owner } => {
+            ConflictCheck::PackageConflict { store_key } => {
+                let name = display_names.get(&store_key).map(|s| s.as_str()).unwrap_or(&store_key);
                 bail!(
                     "{} is already provided by {}\n\n  To resolve: jolene uninstall {} --from {}",
                     display_path(&dst),
-                    owner,
-                    owner,
+                    name,
+                    name,
                     target_slug
                 );
             }

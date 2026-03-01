@@ -12,7 +12,8 @@
       "Bash(cargo test:*)",
       "Bash(cargo check:*)",
       "Bash(ls:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(cargo add:*)"
     ]
   }
 }

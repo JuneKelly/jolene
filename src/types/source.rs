@@ -1,6 +1,8 @@
+use std::fmt::Write as FmtWrite;
 use std::path::PathBuf;
 
 use anyhow::{bail, Result};
+use sha2::{Digest, Sha256};
 
 /// The source from which a package is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,16 +47,24 @@ impl Source {
         }
     }
 
-    /// Path relative to `~/.jolene/repos/`, always two components:
-    /// - GitHub: `{owner}/{repo}`
-    /// - Local:  `local/{dirname}`
-    /// - Url:    `remote/{sanitized}`
-    pub fn store_key(&self) -> String {
+    /// The canonical string used as SHA256 input for the store key.
+    ///
+    /// Format:
+    /// - GitHub: `github||owner/repo`
+    /// - Local:  `local||/absolute/path`
+    /// - Url:    `url||https://...`
+    pub fn canonical_key(&self) -> String {
         match self {
-            Source::GitHub { owner, repo } => format!("{}/{}", owner, repo),
-            Source::Local(path) => format!("local/{}", sanitize_path(path)),
-            Source::Url(url) => format!("remote/{}", sanitize_url(url)),
+            Source::GitHub { owner, repo } => format!("github||{}/{}", owner, repo),
+            Source::Local(path) => format!("local||{}", path.to_string_lossy()),
+            Source::Url(url) => format!("url||{}", url),
         }
+    }
+
+    /// 64-character lowercase hex SHA256 of `canonical_key()`.
+    /// Used as the directory name under `~/.jolene/repos/`.
+    pub fn store_key(&self) -> String {
+        sha256_hex(&self.canonical_key())
     }
 
     /// Human-readable display string, stored as `source` in state.toml.
@@ -66,62 +76,14 @@ impl Source {
         }
     }
 
-    /// The `source_kind` value written to state.toml.
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Source::GitHub { .. } => "github",
-            Source::Local(_) => "local",
-            Source::Url(_) => "url",
-        }
-    }
 }
 
-/// Derive a filesystem-safe single-component key from a local path.
-///
-/// Strips the leading `/`, then replaces every character that isn't
-/// alphanumeric, `-`, or `.` with `-`, and collapses consecutive dashes.
-///
-/// Examples:
-/// - `/Users/junebug/my-pkg` → `Users-junebug-my-pkg`
-/// - `/home/alice/tools.git` → `home-alice-tools.git`
-fn sanitize_path(path: &std::path::Path) -> String {
-    let s = path.to_string_lossy();
-    let s = s.strip_prefix('/').unwrap_or(&s);
-    s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-}
-
-/// Derive a filesystem-safe single-component key from a git URL.
-///
-/// Strips the scheme and `.git` suffix, then replaces every character that
-/// isn't alphanumeric, `-`, or `.` with `-`, and collapses consecutive dashes.
-///
-/// Examples:
-/// - `https://gitlab.com/foo/bar.git` → `gitlab.com-foo-bar`
-/// - `git@github.com:alice/tools.git` → `git-github.com-alice-tools`
-fn sanitize_url(url: &str) -> String {
-    let without_scheme = url
-        .find("://")
-        .map(|i| &url[i + 3..])
-        .unwrap_or(url);
-
-    let without_git = without_scheme
-        .strip_suffix(".git")
-        .unwrap_or(without_scheme);
-
-    without_git
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
+fn sha256_hex(input: &str) -> String {
+    let hash = Sha256::digest(input.as_bytes());
+    hash.iter().fold(String::with_capacity(64), |mut s, b| {
+        write!(s, "{:02x}", b).unwrap();
+        s
+    })
 }
 
 #[cfg(test)]
@@ -143,21 +105,30 @@ mod tests {
     }
 
     #[test]
-    fn github_store_key() {
+    fn github_canonical_key() {
         let s = Source::from_github("junebug/review-tools").unwrap();
-        assert_eq!(s.store_key(), "junebug/review-tools");
+        assert_eq!(s.canonical_key(), "github||junebug/review-tools");
+    }
+
+    #[test]
+    fn github_store_key_is_64_hex() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        let key = s.store_key();
+        assert_eq!(key.len(), 64);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn github_store_key_is_deterministic() {
+        let a = Source::from_github("junebug/review-tools").unwrap();
+        let b = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(a.store_key(), b.store_key());
     }
 
     #[test]
     fn github_display() {
         let s = Source::from_github("junebug/review-tools").unwrap();
         assert_eq!(s.display(), "junebug/review-tools");
-    }
-
-    #[test]
-    fn github_kind() {
-        let s = Source::from_github("junebug/review-tools").unwrap();
-        assert_eq!(s.kind(), "github");
     }
 
     #[test]
@@ -177,7 +148,6 @@ mod tests {
 
     #[test]
     fn github_extra_slash_errors() {
-        // A slash in the repo component would break the two-level store key structure.
         assert!(Source::from_github("a/b/c").is_err());
     }
 
@@ -194,9 +164,17 @@ mod tests {
     // --- Local ---
 
     #[test]
-    fn local_store_key() {
+    fn local_canonical_key() {
         let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
-        assert_eq!(s.store_key(), "local/Users-junebug-my-pkg");
+        assert_eq!(s.canonical_key(), "local||/Users/junebug/my-pkg");
+    }
+
+    #[test]
+    fn local_store_key_is_64_hex() {
+        let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
+        let key = s.store_key();
+        assert_eq!(key.len(), 64);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -211,24 +189,20 @@ mod tests {
         assert_eq!(s.display(), "/Users/junebug/my-pkg");
     }
 
-    #[test]
-    fn local_kind() {
-        let s = Source::Local(PathBuf::from("/path/to/pkg"));
-        assert_eq!(s.kind(), "local");
-    }
-
     // --- Url ---
 
     #[test]
-    fn url_store_key_https() {
+    fn url_canonical_key() {
         let s = Source::Url("https://gitlab.com/foo/bar.git".to_string());
-        assert_eq!(s.store_key(), "remote/gitlab.com-foo-bar");
+        assert_eq!(s.canonical_key(), "url||https://gitlab.com/foo/bar.git");
     }
 
     #[test]
-    fn url_store_key_ssh() {
-        let s = Source::Url("git@github.com:alice/tools.git".to_string());
-        assert_eq!(s.store_key(), "remote/git-github.com-alice-tools");
+    fn url_store_key_is_64_hex() {
+        let s = Source::Url("https://gitlab.com/foo/bar.git".to_string());
+        let key = s.store_key();
+        assert_eq!(key.len(), 64);
+        assert!(key.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
@@ -245,46 +219,18 @@ mod tests {
         assert_eq!(s.display(), url);
     }
 
-    #[test]
-    fn url_kind() {
-        let s = Source::Url("https://example.com/repo.git".to_string());
-        assert_eq!(s.kind(), "url");
-    }
-
-    // --- sanitize_path ---
+    // --- Collision resistance ---
 
     #[test]
-    fn sanitize_path_full_absolute() {
-        assert_eq!(
-            sanitize_path(&std::path::Path::new("/Users/junebug/my-pkg")),
-            "Users-junebug-my-pkg"
-        );
-    }
+    fn different_sources_produce_different_keys() {
+        let github = Source::from_github("alice/tools").unwrap();
+        let local = Source::Local(PathBuf::from("/alice/tools"));
+        let url = Source::Url("https://github.com/alice/tools.git".to_string());
 
-    #[test]
-    fn sanitize_path_collapses_dashes() {
-        // Two adjacent separators should collapse to one dash.
-        assert_eq!(
-            sanitize_path(&std::path::Path::new("/home/alice//tools")),
-            "home-alice-tools"
-        );
-    }
-
-    // --- sanitize_url ---
-
-    #[test]
-    fn sanitize_strips_scheme_and_git() {
-        assert_eq!(sanitize_url("https://gitlab.com/foo/bar.git"), "gitlab.com-foo-bar");
-    }
-
-    #[test]
-    fn sanitize_no_trailing_git() {
-        assert_eq!(sanitize_url("https://example.com/repo"), "example.com-repo");
-    }
-
-    #[test]
-    fn sanitize_collapses_dashes() {
-        // Consecutive separators (e.g. `//`) become a single dash.
-        assert_eq!(sanitize_url("https://example.com//repo.git"), "example.com-repo");
+        let keys = [github.store_key(), local.store_key(), url.store_key()];
+        // All three must be distinct.
+        assert_ne!(keys[0], keys[1]);
+        assert_ne!(keys[0], keys[2]);
+        assert_ne!(keys[1], keys[2]);
     }
 }

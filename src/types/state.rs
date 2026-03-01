@@ -1,5 +1,27 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+/// Source type discriminant stored in state.toml.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceKind {
+    #[default]
+    GitHub,
+    Local,
+    Url,
+}
+
+impl fmt::Display for SourceKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SourceKind::GitHub => write!(f, "github"),
+            SourceKind::Local => write!(f, "local"),
+            SourceKind::Url => write!(f, "url"),
+        }
+    }
+}
 
 /// Root of state.toml.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -11,9 +33,9 @@ pub struct State {
 /// One installed package entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageState {
-    /// "github" | "local" | "url". Defaults to "github" for pre-existing entries.
-    #[serde(default = "default_source_kind")]
-    pub source_kind: String,
+    /// Source type. Defaults to GitHub for pre-existing entries.
+    #[serde(default)]
+    pub source_kind: SourceKind,
     /// Human-readable source identifier stored for display and lookup:
     /// - GitHub: "owner/repo"
     /// - Local:  absolute path string
@@ -23,7 +45,7 @@ pub struct PackageState {
     /// None for pre-existing entries that pre-date this field.
     #[serde(default)]
     pub clone_url: Option<String>,
-    /// Relative to ~/.jolene/ (e.g. "repos/owner/repo", "repos/local/name")
+    /// Relative to ~/.jolene/ — always "repos/{64-char-hex}".
     pub clone_path: String,
     pub branch: String,
     pub commit: String,
@@ -34,17 +56,19 @@ pub struct PackageState {
 }
 
 impl PackageState {
-    /// The key identifying this package within `~/.jolene/repos/`,
-    /// i.e. `clone_path` with the `"repos/"` prefix stripped.
+    /// The 64-char hex SHA256 identifying this package within `~/.jolene/repos/`.
     pub fn store_key(&self) -> &str {
-        self.clone_path
+        let key = self
+            .clone_path
             .strip_prefix("repos/")
-            .unwrap_or(&self.clone_path)
+            .unwrap_or(&self.clone_path);
+        debug_assert!(
+            key.len() == 64 && key.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')),
+            "clone_path invariant violated: expected repos/{{64-char-hex}}, got: {}",
+            self.clone_path
+        );
+        key
     }
-}
-
-fn default_source_kind() -> String {
-    "github".to_string()
 }
 
 /// One target's installation record within a package.

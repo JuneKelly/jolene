@@ -270,14 +270,12 @@ All jolene data lives under `~/.jolene/`.
 ~/.jolene/
   state.toml                        # installation state
   repos/                            # cloned repositories
-    junebug/                        # GitHub: {owner}/
-      review-tools/                 # git clone
-      agent-learning-system/        # git clone
-    local/                          # --local installs
-      my-tools/                     # git clone (copy of local repo)
-    remote/                         # --url installs
-      gitlab.com-someone-cool-tools/ # git clone
+    a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/  # git clone
+    b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7/  # git clone
 ```
+
+Each directory under `repos/` is named with the SHA256 of the package's canonical key
+(see Store key below). `state.toml` is the authoritative mapping from hash to source.
 
 ### State File: state.toml
 
@@ -285,10 +283,10 @@ Tracks installed packages and their symlinks.
 
 ```toml
 [[packages]]
-source_kind = "github"
-source      = "junebug/review-tools"
-clone_url   = "https://github.com/junebug/review-tools.git"
-clone_path  = "repos/junebug/review-tools"
+source_kind  = "github"
+source       = "junebug/review-tools"
+clone_url    = "https://github.com/junebug/review-tools.git"
+clone_path   = "repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8"
 branch      = "main"
 commit      = "abc1234def5678"
 installed_at = "2026-02-28T10:00:00Z"
@@ -314,7 +312,7 @@ updated_at   = "2026-02-28T10:00:00Z"
 **Path conventions:**
 - `src` paths are relative to the package clone root.
 - `dst` paths use `~` for home directory (expanded at runtime).
-- `clone_path` is relative to `~/.jolene/`.
+- `clone_path` is relative to `~/.jolene/` and always has the form `repos/{64-char-hex}`.
 
 **Source fields:**
 
@@ -322,12 +320,16 @@ updated_at   = "2026-02-28T10:00:00Z"
 |---------------|----------------------------------------------------------------|
 | `source_kind` | `"github"` \| `"local"` \| `"url"`. Defaults to `"github"` for pre-existing entries. |
 | `source`      | Human-readable identifier: `owner/repo`, absolute path, or URL. Used for display and lookup. |
-| `clone_url`   | The git URL used to clone the package. Empty string for pre-existing entries. |
+| `clone_url`   | The git URL used to clone the package. Absent for pre-existing entries. |
+| `clone_path`  | `repos/{64-char-hex}` — relative to `~/.jolene/`. The hex is the SHA256 store key. |
 
-**Store key:** The two-component path under `repos/` is the store key:
-- GitHub: `{owner}/{repo}`
-- Local: `local/{dirname}`
-- URL: `remote/{sanitized-host-and-path}` (scheme and `.git` stripped, separators replaced with `-`)
+**Store key:** Each package is identified by the SHA256 hex digest of its canonical key string:
+- GitHub: SHA256 of `github||owner/repo`
+- Local:  SHA256 of `local||/absolute/path`
+- URL:    SHA256 of `url||https://...`
+
+The 64-character hex digest is used as the directory name under `repos/`.
+`state.toml` is the authoritative mapping from hash to human-readable source.
 
 **Atomicity:** The state file is written to a temp file then renamed,
 preventing corruption on interruption.
@@ -340,13 +342,15 @@ preventing corruption on interruption.
 
 ```
 1. RESOLVE SOURCE
-   --github owner/repo → clone URL: https://github.com/{owner}/{repo}.git
-                         store key: {owner}/{repo}
-   --local  ./path     → clone URL: absolute path (git supports local clones)
-                         store key: local/{dirname}
-   --url    https://…  → clone URL: the URL as-is
-                         store key: remote/{sanitized} (scheme + .git stripped,
-                                    path separators replaced with -)
+   --github owner/repo → clone URL:    https://github.com/{owner}/{repo}.git
+                         canonical key: github||owner/repo
+                         store key:    SHA256(canonical key) — 64-char hex
+   --local  ./path     → clone URL:    absolute path (git supports local clones)
+                         canonical key: local||/absolute/path
+                         store key:    SHA256(canonical key) — 64-char hex
+   --url    https://…  → clone URL:    the URL as-is
+                         canonical key: url||https://...
+                         store key:    SHA256(canonical key) — 64-char hex
 
 2. FETCH
    - Exists in store? → git pull
@@ -447,7 +451,7 @@ codex:
 Package content `commands/review.md` installed to `opencode`:
 
 ```
-symlink_source (absolute): /Users/you/.jolene/repos/junebug/review-tools/commands/review.md
+symlink_source (absolute): /Users/you/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/commands/review.md
 symlink_target:            /Users/you/.config/opencode/commands/review.md
 ```
 
@@ -478,7 +482,7 @@ silently. With `--verbose`:
 Each `.md` file gets its own symlink:
 
 ```
-~/.claude/commands/review.md → /home/user/.jolene/repos/junebug/review-tools/commands/review.md
+~/.claude/commands/review.md → /home/user/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/commands/review.md
 ```
 
 ### Directory-Level Symlinks (Skills)
@@ -486,7 +490,7 @@ Each `.md` file gets its own symlink:
 Each skill directory is symlinked whole to preserve internal structure:
 
 ```
-~/.claude/skills/code-analysis/ → /home/user/.jolene/repos/junebug/review-tools/skills/code-analysis/
+~/.claude/skills/code-analysis/ → /home/user/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/skills/code-analysis/
 ```
 
 ### No Namespace Prefix

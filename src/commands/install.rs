@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 
@@ -9,7 +11,7 @@ use crate::state;
 use crate::symlink::{execute_symlinks, plan_symlinks, SymlinkPlan};
 use crate::types::content::ContentType;
 use crate::types::source::Source;
-use crate::types::state::{Installation, PackageState};
+use crate::types::state::{Installation, PackageState, SourceKind};
 use crate::types::target::Target;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
@@ -64,7 +66,15 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         );
     }
 
-    // 5-6. Phase 1: check conflicts and collect all plans (no side effects).
+    // 5. Load state early so we can build the hash→display map for conflict messages.
+    let mut app_state = state::load()?;
+    let display_names: HashMap<String, String> = app_state
+        .packages
+        .iter()
+        .map(|p| (p.store_key().to_string(), p.source.clone()))
+        .collect();
+
+    // 6-7. Phase 1: check conflicts and collect all plans (no side effects).
     //      Abort on first conflict before any symlinks are created.
     let branch = git::current_branch(&clone_root)?;
     let commit = git::full_commit(&clone_root)?;
@@ -120,7 +130,7 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         }
 
         let plans =
-            plan_symlinks(&supported, &clone_root, &target_root, target.slug(), &store_key)
+            plan_symlinks(&supported, &clone_root, &target_root, target.slug(), &store_key, &display_names)
                 .map_err(|e| {
                     anyhow::anyhow!("Conflict installing {} to {}:\n  {}", source.display(), target, e)
                 })?;
@@ -128,7 +138,7 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         staged.push(TargetStage { plan_count: plans.len(), plans });
     }
 
-    // 7. Phase 2: execute all plans atomically.
+    // 8. Phase 2: execute all plans atomically.
     //    Flattening into one execute_symlinks call means a failure at any point
     //    rolls back all symlinks created so far, across all targets.
     let all_plans: Vec<_> = staged.iter_mut().flat_map(|s| s.plans.drain(..)).collect();
@@ -153,8 +163,7 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         });
     }
 
-    // 8. Record state
-    let mut app_state = state::load()?;
+    // 9. Record state
     let clone_path = format!("repos/{}", store_key);
 
     match state::find_package_mut(&mut app_state, &source.display())? {
@@ -176,7 +185,11 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         }
         None => {
             app_state.packages.push(PackageState {
-                source_kind: source.kind().to_string(),
+                source_kind: match source {
+                    Source::GitHub { .. } => SourceKind::GitHub,
+                    Source::Local(_) => SourceKind::Local,
+                    Source::Url(_) => SourceKind::Url,
+                },
                 source: source.display(),
                 clone_url: Some(source.clone_url()),
                 clone_path,
