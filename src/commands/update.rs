@@ -43,6 +43,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     let src = Source::parse(&pkg.source)?;
     let pkg_source = pkg.source.clone();
+    let installations: Vec<_> = pkg.installations.clone();
     let clone_root = clone_dir(&src.author, &src.repo)?;
 
     // 1. Pull — detect no-op early.
@@ -76,8 +77,6 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         removals: Vec<String>,
     }
 
-    let pkg = state::find_package(app_state, source)?.unwrap();
-    let installations: Vec<_> = pkg.installations.clone();
     let mut staged: Vec<TargetStage> = Vec::new();
 
     for inst in &installations {
@@ -146,6 +145,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 5. Phase 3: removals and state update per target.
     //    Additions are on disk; removing old symlinks now is safe.
+    let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
     let mut offset = 0;
     for stage in &staged {
         let new_entries = all_entries[offset..offset + stage.plan_count].to_vec();
@@ -162,7 +162,6 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             }
         }
 
-        let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
         if let Some(inst_mut) = pkg_mut
             .installations
             .iter_mut()
@@ -174,7 +173,6 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     }
 
     // 6. Update commit and timestamp, then persist once.
-    let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
     pkg_mut.commit = new_commit;
     pkg_mut.branch = new_branch;
     pkg_mut.updated_at = now;
