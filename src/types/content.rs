@@ -7,6 +7,7 @@ pub enum ContentType {
     Agent,
 }
 
+#[allow(dead_code)]
 impl ContentType {
     pub fn label(self) -> &'static str {
         match self {

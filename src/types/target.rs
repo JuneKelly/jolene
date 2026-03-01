@@ -56,11 +56,6 @@ impl Target {
         matches!(self, Target::ClaudeCode | Target::OpenCode)
     }
 
-    pub fn content_dir(self, content_type: &str) -> Option<PathBuf> {
-        let root = self.config_root()?;
-        Some(root.join(content_type))
-    }
-
     pub fn exists(self) -> bool {
         self.config_root()
             .map(|p| p.exists())

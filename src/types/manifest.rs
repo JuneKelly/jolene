@@ -9,6 +9,7 @@ pub struct Manifest {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Package {
+    #[allow(dead_code)]
     pub name: String,
     pub description: String,
     pub version: String,

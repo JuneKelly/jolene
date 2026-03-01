@@ -29,9 +29,6 @@ impl Source {
         format!("{}/{}", self.author, self.repo)
     }
 
-    pub fn clone_subpath(&self) -> String {
-        format!("{}/{}", self.author, self.repo)
-    }
 }
 
 impl fmt::Display for Source {

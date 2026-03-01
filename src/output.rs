@@ -26,6 +26,7 @@ impl Output {
     }
 
     /// Always print to stderr regardless of quiet/verbose flags.
+    #[allow(dead_code)]
     pub fn error(&self, msg: impl fmt::Display) {
         eprintln!("{msg}");
     }
