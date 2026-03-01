@@ -57,6 +57,7 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
     use crate::types::content::ContentType;
 
     struct TargetStage {
+        plan_count: usize,
         plans: Vec<SymlinkPlan>,
     }
 
@@ -108,23 +109,22 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
                 anyhow::anyhow!("Conflict installing {} to {}:\n  {}", source, target, e)
             })?;
 
-        staged.push(TargetStage { plans });
+        staged.push(TargetStage { plan_count: plans.len(), plans });
     }
 
     // 7. Phase 2: execute all plans atomically.
     //    Flattening into one execute_symlinks call means a failure at any point
     //    rolls back all symlinks created so far, across all targets.
-    let plan_counts: Vec<usize> = staged.iter().map(|s| s.plans.len()).collect();
-    let all_plans: Vec<_> = staged.into_iter().flat_map(|s| s.plans).collect();
+    let all_plans: Vec<_> = staged.iter_mut().flat_map(|s| s.plans.drain(..)).collect();
     let all_entries = execute_symlinks(&all_plans)?;
 
     // Split entries back by target, print output, and build installation records.
     let mut new_installations: Vec<Installation> = Vec::new();
     let mut offset = 0;
 
-    for (target, count) in targets.iter().zip(plan_counts.iter()) {
-        let entries = all_entries[offset..offset + count].to_vec();
-        offset += count;
+    for (target, stage) in targets.iter().zip(staged.iter()) {
+        let entries = all_entries[offset..offset + stage.plan_count].to_vec();
+        offset += stage.plan_count;
 
         out.print(format!("\n  Installing to {}:", target));
         for entry in &entries {

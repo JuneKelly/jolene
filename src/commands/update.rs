@@ -70,6 +70,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     struct TargetStage {
         target_slug: String,
         new_srcs: HashSet<String>,
+        plan_count: usize,
         plans: Vec<SymlinkPlan>,
         /// dst display paths (~/...) of symlinks to remove after additions succeed.
         removals: Vec<String>,
@@ -132,6 +133,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         staged.push(TargetStage {
             target_slug: inst.target.clone(),
             new_srcs,
+            plan_count: plans.len(),
             plans,
             removals,
         });
@@ -139,29 +141,21 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 4. Phase 2: execute all additions atomically.
     //    A failure here rolls back all created symlinks; no removals have happened.
-    let plan_counts: Vec<usize> = staged.iter().map(|s| s.plans.len()).collect();
-    let target_slugs: Vec<String> = staged.iter().map(|s| s.target_slug.clone()).collect();
-    let new_srcs_per_target: Vec<HashSet<String>> =
-        staged.iter().map(|s| s.new_srcs.clone()).collect();
-    let removals_per_target: Vec<Vec<String>> =
-        staged.iter().map(|s| s.removals.clone()).collect();
-
-    let all_plans: Vec<_> = staged.into_iter().flat_map(|s| s.plans).collect();
+    let all_plans: Vec<_> = staged.iter_mut().flat_map(|s| s.plans.drain(..)).collect();
     let all_entries = execute_symlinks(&all_plans)?;
 
     // 5. Phase 3: removals and state update per target.
     //    Additions are on disk; removing old symlinks now is safe.
     let mut offset = 0;
-    for (idx, slug) in target_slugs.iter().enumerate() {
-        let count = plan_counts[idx];
-        let new_entries = all_entries[offset..offset + count].to_vec();
-        offset += count;
+    for stage in &staged {
+        let new_entries = all_entries[offset..offset + stage.plan_count].to_vec();
+        offset += stage.plan_count;
 
-        out.print(format!("\n  Updating {}:", slug));
+        out.print(format!("\n  Updating {}:", stage.target_slug));
         for entry in &new_entries {
             out.print(format!("    + {} -> {}", entry.src, entry.dst));
         }
-        for dst_str in &removals_per_target[idx] {
+        for dst_str in &stage.removals {
             if let Some(dst) = expand_tilde(dst_str) {
                 remove_symlink(&dst)?;
                 out.print(format!("    - {} (removed)", dst_str));
@@ -169,8 +163,12 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         }
 
         let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
-        if let Some(inst_mut) = pkg_mut.installations.iter_mut().find(|i| i.target == *slug) {
-            inst_mut.symlinks.retain(|e| new_srcs_per_target[idx].contains(&e.src));
+        if let Some(inst_mut) = pkg_mut
+            .installations
+            .iter_mut()
+            .find(|i| i.target == stage.target_slug)
+        {
+            inst_mut.symlinks.retain(|e| stage.new_srcs.contains(&e.src));
             inst_mut.symlinks.extend(new_entries);
         }
     }
