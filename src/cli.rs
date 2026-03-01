@@ -1,4 +1,6 @@
-use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+
+use clap::{ArgGroup, Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "jolene", version, about = "A package manager for coding agent commands, skills, and agents.")]
@@ -17,15 +19,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Install a package from GitHub
-    Install {
-        /// GitHub repository in Author/repo format
-        source: String,
-
-        /// Target(s) to install to (repeatable). Defaults to all detected targets.
-        #[arg(long = "to", value_name = "TARGET")]
-        to: Vec<String>,
-    },
+    /// Install a package
+    Install(InstallArgs),
 
     /// Uninstall a package
     Uninstall {
@@ -62,4 +57,31 @@ pub enum Command {
 
     /// Verify health of all installations
     Doctor,
+}
+
+#[derive(Debug, Args)]
+#[command(
+    about = "Install a package",
+    group(
+        ArgGroup::new("source")
+            .required(true)
+            .args(["github", "local", "url"])
+    )
+)]
+pub struct InstallArgs {
+    /// GitHub repository in Owner/repo format
+    #[arg(long, value_name = "OWNER/REPO")]
+    pub github: Option<String>,
+
+    /// Local git repository path
+    #[arg(long, value_name = "PATH")]
+    pub local: Option<PathBuf>,
+
+    /// Remote git URL
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+
+    /// Target(s) to install to (repeatable). Defaults to all detected targets.
+    #[arg(long = "to", value_name = "TARGET")]
+    pub to: Vec<String>,
 }

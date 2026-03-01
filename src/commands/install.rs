@@ -1,39 +1,55 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 
-use crate::config::clone_dir;
+use crate::cli::InstallArgs;
+use crate::config::clone_root_for;
 use crate::git;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{execute_symlinks, plan_symlinks, SymlinkPlan};
+use crate::types::content::ContentType;
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState};
 use crate::types::target::Target;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
-pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
-    // 1. Parse source
-    let source = Source::parse(source_str)?;
+pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
+    let source = if let Some(ref s) = args.github {
+        Source::from_github(s)?
+    } else if let Some(ref path) = args.local {
+        let abs = path
+            .canonicalize()
+            .with_context(|| format!("Cannot access local path: {}", path.display()))?;
+        Source::Local(abs)
+    } else if let Some(ref url) = args.url {
+        Source::Url(url.clone())
+    } else {
+        unreachable!("clap ArgGroup ensures one of --github/--local/--url is set")
+    };
 
-    out.print(format!("Installing {}...", source));
+    run(&source, &args.to, out)
+}
+
+pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
+    out.print(format!("Installing {}...", source.display()));
 
     // 2. Clone or pull
-    let clone_root = clone_dir(&source.author, &source.repo)?;
+    let clone_root = clone_root_for(&format!("repos/{}", source.store_key()))?;
 
     if clone_root.exists() {
-        out.print(format!("  Updating existing clone..."));
+        out.print("  Updating existing clone...".to_string());
         git::pull(&clone_root)?;
     } else {
-        out.print(format!("  Cloning {}", source.github_url()));
-        git::clone(&source.github_url(), &clone_root)?;
+        out.print(format!("  Cloning {}", source.clone_url()));
+        git::clone(&source.clone_url(), &clone_root)?;
     }
 
     // 3. Validate
     let manifest = load_manifest(&clone_root)
-        .map_err(|e| anyhow::anyhow!("Error: {}/{} {}", source.author, source.repo, e))?;
+        .map_err(|e| anyhow::anyhow!("Error: {} {}", source.display(), e))?;
 
     validate_manifest(&manifest, &clone_root)
-        .map_err(|e| anyhow::anyhow!("Error: {}/{} {}", source.author, source.repo, e))?;
+        .map_err(|e| anyhow::anyhow!("Error: {} {}", source.display(), e))?;
 
     let items = collect_content_items(&manifest);
 
@@ -53,8 +69,7 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
     let branch = git::current_branch(&clone_root)?;
     let commit = git::full_commit(&clone_root)?;
     let now = Utc::now();
-
-    use crate::types::content::ContentType;
+    let store_key = source.store_key();
 
     struct TargetStage {
         plan_count: usize,
@@ -104,10 +119,11 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
             ));
         }
 
-        let plans = plan_symlinks(&supported, &clone_root, &target_root, target.slug(), &source.display_name())
-            .map_err(|e| {
-                anyhow::anyhow!("Conflict installing {} to {}:\n  {}", source, target, e)
-            })?;
+        let plans =
+            plan_symlinks(&supported, &clone_root, &target_root, target.slug(), &store_key)
+                .map_err(|e| {
+                    anyhow::anyhow!("Conflict installing {} to {}:\n  {}", source.display(), target, e)
+                })?;
 
         staged.push(TargetStage { plan_count: plans.len(), plans });
     }
@@ -139,10 +155,9 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
 
     // 8. Record state
     let mut app_state = state::load()?;
+    let clone_path = format!("repos/{}", store_key);
 
-    let clone_path = format!("repos/{}/{}", source.author, source.repo);
-
-    match state::find_package_mut(&mut app_state, &source.display_name())? {
+    match state::find_package_mut(&mut app_state, &source.display())? {
         Some(existing) => {
             existing.branch = branch;
             existing.commit = commit;
@@ -161,7 +176,9 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
         }
         None => {
             app_state.packages.push(PackageState {
-                source: source.display_name(),
+                source_kind: source.kind().to_string(),
+                source: source.display(),
+                clone_url: source.clone_url(),
                 clone_path,
                 branch,
                 commit,
@@ -177,7 +194,7 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
     let target_names: Vec<_> = targets.iter().map(|t| t.slug().to_string()).collect();
     out.print(format!(
         "\nInstalled {} to {}",
-        source,
+        source.display(),
         target_names.join(", ")
     ));
 

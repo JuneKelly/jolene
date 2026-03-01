@@ -11,9 +11,19 @@ pub struct State {
 /// One installed package entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageState {
-    /// "Author/repo"
+    /// "github" | "local" | "url". Defaults to "github" for pre-existing entries.
+    #[serde(default = "default_source_kind")]
+    pub source_kind: String,
+    /// Human-readable source identifier stored for display and lookup:
+    /// - GitHub: "owner/repo"
+    /// - Local:  absolute path string
+    /// - Url:    the full URL
     pub source: String,
-    /// Relative to ~/.jolene/ (e.g. "repos/author/repo")
+    /// The git URL that was used to clone this package.
+    /// Empty string for pre-existing entries (defaults to deriving from source).
+    #[serde(default)]
+    pub clone_url: String,
+    /// Relative to ~/.jolene/ (e.g. "repos/owner/repo", "repos/local/name")
     pub clone_path: String,
     pub branch: String,
     pub commit: String,
@@ -21,6 +31,10 @@ pub struct PackageState {
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
     pub installations: Vec<Installation>,
+}
+
+fn default_source_kind() -> String {
+    "github".to_string()
 }
 
 /// One target's installation record within a package.

@@ -2,7 +2,7 @@
 
 A package manager for coding agent commands, skills, and agents.
 
-Jolene installs packages from GitHub repositories into the config directories
+Jolene installs packages from git repositories into the config directories
 of your AI coding tools — Claude Code, OpenCode, and Codex. Packages are cloned
 locally and content is installed via symlinks, so a single `jolene update` pulls
 the latest from every package you have installed.
@@ -22,15 +22,18 @@ cargo install --path .
 ### Install a package
 
 ```sh
-jolene install <Author/repo> [--to <target>...]
+jolene install --github <owner/repo> [--to <target>...]
+jolene install --local  <path>       [--to <target>...]
+jolene install --url    <git-url>    [--to <target>...]
 ```
 
-Clones the repository and creates symlinks for all supported content. If `--to`
-is omitted, jolene installs to every target whose config directory exists on
+Exactly one of `--github`, `--local`, or `--url` is required. Clones the
+repository and creates symlinks for all supported content. If `--to` is
+omitted, jolene installs to every target whose config directory exists on
 your system.
 
 ```
-$ jolene install junebug/review-tools --to opencode
+$ jolene install --github junebug/review-tools --to opencode
 Installing junebug/review-tools...
   Cloning https://github.com/junebug/review-tools.git
   Found: 1 command, 2 skills
@@ -53,6 +56,7 @@ jolene list [--target <target>]
 Installed packages:
 
   junebug/review-tools
+    Source:  github
     Targets: opencode, claude-code
     Content: 1 command, 2 skills
     Version: (main@abc1234)
@@ -108,7 +112,7 @@ Targets are auto-detected by checking whether their config root exists. Use
 
 ## Package Format
 
-A jolene package is a GitHub repository with a `jolene.toml` manifest and
+A jolene package is a git repository with a `jolene.toml` manifest and
 content in conventional directories.
 
 ### Directory structure

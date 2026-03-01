@@ -9,16 +9,14 @@ pub fn jolene_root() -> Result<PathBuf> {
         .context("Could not determine home directory")
 }
 
-pub fn repos_dir() -> Result<PathBuf> {
-    Ok(jolene_root()?.join("repos"))
-}
-
 pub fn state_file() -> Result<PathBuf> {
     Ok(jolene_root()?.join("state.toml"))
 }
 
-pub fn clone_dir(author: &str, repo: &str) -> Result<PathBuf> {
-    Ok(repos_dir()?.join(author).join(repo))
+/// Resolve an absolute clone directory from a `clone_path` value as stored in
+/// state.toml (e.g. `"repos/owner/repo"`, `"repos/local/name"`).
+pub fn clone_root_for(clone_path: &str) -> Result<PathBuf> {
+    Ok(jolene_root()?.join(clone_path))
 }
 
 /// Convert an absolute path to a `~/...` display string for user-facing output.

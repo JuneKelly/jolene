@@ -1,12 +1,11 @@
 use anyhow::{bail, Result};
 use chrono::Utc;
 
-use crate::config::clone_dir;
+use crate::config::clone_root_for;
 use crate::git;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink, SymlinkPlan};
-use crate::types::source::Source;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
@@ -41,10 +40,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let pkg = state::find_package(app_state, source)?
         .ok_or_else(|| anyhow::anyhow!("Package '{}' not found in state.", source))?;
 
-    let src = Source::parse(&pkg.source)?;
-    let pkg_source = pkg.source.clone();
+    let store_key = pkg.clone_path.strip_prefix("repos/").unwrap_or(&pkg.clone_path).to_string();
     let installations: Vec<_> = pkg.installations.clone();
-    let clone_root = clone_dir(&src.author, &src.repo)?;
+    let clone_root = clone_root_for(&pkg.clone_path)?;
 
     // 1. Pull — detect no-op early.
     let old_commit = git::full_commit(&clone_root)?;
@@ -119,7 +117,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             &clone_root,
             &target_root,
             inst.target.as_str(),
-            &pkg_source,
+            &store_key,
         )?;
 
         let removals: Vec<String> = inst

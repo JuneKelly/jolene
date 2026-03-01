@@ -1,114 +1,240 @@
-use std::fmt;
-use std::str::FromStr;
+use std::path::PathBuf;
 
 use anyhow::{bail, Result};
 
+/// The source from which a package is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Source {
-    pub author: String,
-    pub repo: String,
+pub enum Source {
+    /// A GitHub repository, addressed as `owner/repo`.
+    GitHub { owner: String, repo: String },
+    /// A local git repository on disk.
+    Local(PathBuf),
+    /// An arbitrary remote git URL.
+    Url(String),
 }
 
 impl Source {
-    pub fn parse(s: &str) -> Result<Source> {
+    /// Parse `owner/repo` into a [`Source::GitHub`] variant.
+    pub fn from_github(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.splitn(2, '/').collect();
         match parts.as_slice() {
-            [author, repo] if !author.is_empty() && !repo.is_empty() => Ok(Source {
-                author: author.to_string(),
+            [owner, repo] if !owner.is_empty() && !repo.is_empty() => Ok(Source::GitHub {
+                owner: owner.to_string(),
                 repo: repo.to_string(),
             }),
-            _ => bail!("Invalid source '{}'. Expected Author/repo format.", s),
+            _ => bail!("--github expects Owner/repo format, got '{}'", s),
         }
     }
 
-    pub fn github_url(&self) -> String {
-        format!("https://github.com/{}/{}.git", self.author, self.repo)
+    /// The git URL used to clone this source.
+    pub fn clone_url(&self) -> String {
+        match self {
+            Source::GitHub { owner, repo } => {
+                format!("https://github.com/{}/{}.git", owner, repo)
+            }
+            Source::Local(path) => path.to_string_lossy().into_owned(),
+            Source::Url(url) => url.clone(),
+        }
     }
 
-    pub fn display_name(&self) -> String {
-        format!("{}/{}", self.author, self.repo)
+    /// Path relative to `~/.jolene/repos/`, always two components:
+    /// - GitHub: `{owner}/{repo}`
+    /// - Local:  `local/{dirname}`
+    /// - Url:    `remote/{sanitized}`
+    pub fn store_key(&self) -> String {
+        match self {
+            Source::GitHub { owner, repo } => format!("{}/{}", owner, repo),
+            Source::Local(path) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "unnamed".to_string());
+                format!("local/{}", name)
+            }
+            Source::Url(url) => format!("remote/{}", sanitize_url(url)),
+        }
     }
 
+    /// Human-readable display string, stored as `source` in state.toml.
+    pub fn display(&self) -> String {
+        match self {
+            Source::GitHub { owner, repo } => format!("{}/{}", owner, repo),
+            Source::Local(path) => path.to_string_lossy().into_owned(),
+            Source::Url(url) => url.clone(),
+        }
+    }
+
+    /// The `source_kind` value written to state.toml.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Source::GitHub { .. } => "github",
+            Source::Local(_) => "local",
+            Source::Url(_) => "url",
+        }
+    }
 }
 
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display_name())
-    }
-}
+/// Derive a filesystem-safe single-component key from a git URL.
+///
+/// Strips the scheme and `.git` suffix, then replaces every character that
+/// isn't alphanumeric, `-`, or `.` with `-`, and collapses consecutive dashes.
+///
+/// Examples:
+/// - `https://gitlab.com/foo/bar.git` → `gitlab.com-foo-bar`
+/// - `git@github.com:alice/tools.git` → `git-github.com-alice-tools`
+fn sanitize_url(url: &str) -> String {
+    let without_scheme = url
+        .find("://")
+        .map(|i| &url[i + 3..])
+        .unwrap_or(url);
 
-impl FromStr for Source {
-    type Err = anyhow::Error;
+    let without_git = without_scheme
+        .strip_suffix(".git")
+        .unwrap_or(without_scheme);
 
-    fn from_str(s: &str) -> Result<Self> {
-        Source::parse(s)
-    }
+    without_git
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // --- GitHub ---
+
     #[test]
-    fn parse_valid() {
-        let s = Source::parse("junebug/review-tools").unwrap();
-        assert_eq!(s.author, "junebug");
-        assert_eq!(s.repo, "review-tools");
+    fn github_from_str() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(s, Source::GitHub { owner: "junebug".into(), repo: "review-tools".into() });
     }
 
     #[test]
-    fn parse_missing_slash_errors() {
-        assert!(Source::parse("junebug").is_err());
+    fn github_clone_url() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(s.clone_url(), "https://github.com/junebug/review-tools.git");
     }
 
     #[test]
-    fn parse_empty_author_errors() {
-        assert!(Source::parse("/repo").is_err());
+    fn github_store_key() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(s.store_key(), "junebug/review-tools");
     }
 
     #[test]
-    fn parse_empty_repo_errors() {
-        assert!(Source::parse("author/").is_err());
+    fn github_display() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(s.display(), "junebug/review-tools");
     }
 
     #[test]
-    fn parse_empty_string_errors() {
-        assert!(Source::parse("").is_err());
+    fn github_kind() {
+        let s = Source::from_github("junebug/review-tools").unwrap();
+        assert_eq!(s.kind(), "github");
     }
 
     #[test]
-    fn parse_extra_slash_kept_in_repo() {
-        // splitn(2, '/') puts everything after the first slash into repo
-        let s = Source::parse("a/b/c").unwrap();
-        assert_eq!(s.author, "a");
-        assert_eq!(s.repo, "b/c");
+    fn github_missing_slash_errors() {
+        assert!(Source::from_github("junebug").is_err());
     }
 
     #[test]
-    fn github_url() {
-        let s = Source::parse("junebug/review-tools").unwrap();
-        assert_eq!(
-            s.github_url(),
-            "https://github.com/junebug/review-tools.git"
-        );
+    fn github_empty_owner_errors() {
+        assert!(Source::from_github("/repo").is_err());
     }
 
     #[test]
-    fn display_name_roundtrips() {
-        let s = Source::parse("junebug/review-tools").unwrap();
-        assert_eq!(s.display_name(), "junebug/review-tools");
+    fn github_empty_repo_errors() {
+        assert!(Source::from_github("author/").is_err());
     }
 
     #[test]
-    fn display_impl_matches_display_name() {
-        let s = Source::parse("junebug/review-tools").unwrap();
-        assert_eq!(format!("{s}"), s.display_name());
+    fn github_extra_slash_kept_in_repo() {
+        // splitn(2) puts everything after the first slash into repo
+        let s = Source::from_github("a/b/c").unwrap();
+        assert_eq!(s, Source::GitHub { owner: "a".into(), repo: "b/c".into() });
+    }
+
+    // --- Local ---
+
+    #[test]
+    fn local_store_key() {
+        let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
+        assert_eq!(s.store_key(), "local/my-pkg");
     }
 
     #[test]
-    fn from_str_parses_correctly() {
-        let s: Source = "junebug/review-tools".parse().unwrap();
-        assert_eq!(s.author, "junebug");
-        assert_eq!(s.repo, "review-tools");
+    fn local_clone_url_is_path() {
+        let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
+        assert_eq!(s.clone_url(), "/Users/junebug/my-pkg");
+    }
+
+    #[test]
+    fn local_display_is_path() {
+        let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
+        assert_eq!(s.display(), "/Users/junebug/my-pkg");
+    }
+
+    #[test]
+    fn local_kind() {
+        let s = Source::Local(PathBuf::from("/path/to/pkg"));
+        assert_eq!(s.kind(), "local");
+    }
+
+    // --- Url ---
+
+    #[test]
+    fn url_store_key_https() {
+        let s = Source::Url("https://gitlab.com/foo/bar.git".to_string());
+        assert_eq!(s.store_key(), "remote/gitlab.com-foo-bar");
+    }
+
+    #[test]
+    fn url_store_key_ssh() {
+        let s = Source::Url("git@github.com:alice/tools.git".to_string());
+        assert_eq!(s.store_key(), "remote/git-github.com-alice-tools");
+    }
+
+    #[test]
+    fn url_clone_url_is_identity() {
+        let url = "https://gitlab.com/foo/bar.git".to_string();
+        let s = Source::Url(url.clone());
+        assert_eq!(s.clone_url(), url);
+    }
+
+    #[test]
+    fn url_display_is_identity() {
+        let url = "https://gitlab.com/foo/bar.git".to_string();
+        let s = Source::Url(url.clone());
+        assert_eq!(s.display(), url);
+    }
+
+    #[test]
+    fn url_kind() {
+        let s = Source::Url("https://example.com/repo.git".to_string());
+        assert_eq!(s.kind(), "url");
+    }
+
+    // --- sanitize_url ---
+
+    #[test]
+    fn sanitize_strips_scheme_and_git() {
+        assert_eq!(sanitize_url("https://gitlab.com/foo/bar.git"), "gitlab.com-foo-bar");
+    }
+
+    #[test]
+    fn sanitize_no_trailing_git() {
+        assert_eq!(sanitize_url("https://example.com/repo"), "example.com-repo");
+    }
+
+    #[test]
+    fn sanitize_collapses_dashes() {
+        // Consecutive separators (e.g. `//`) become a single dash.
+        assert_eq!(sanitize_url("https://example.com//repo.git"), "example.com-repo");
     }
 }

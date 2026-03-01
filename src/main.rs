@@ -18,7 +18,7 @@ fn main() {
     let out = Output::new(cli.verbose, cli.quiet);
 
     let result = match &cli.command {
-        Command::Install { source, to } => commands::install::run(source, to, &out),
+        Command::Install(args) => commands::install::run_from_args(args, &out),
         Command::Uninstall {
             package,
             from,

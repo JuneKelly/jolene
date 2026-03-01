@@ -4,9 +4,19 @@ A package manager for coding agent commands, skills, and agents.
 
 ## Overview
 
-Jolene installs packages from GitHub repositories that bundle commands, skills,
-and agents for coding AI tools. Packages are cloned locally and installed to
-target tool directories using symlinks.
+Jolene installs packages from git repositories that bundle commands, skills,
+and agents for coding AI tools. Packages are cloned into a local store and
+installed to target tool directories using symlinks.
+
+### Source Types
+
+Jolene supports three install source types:
+
+| Flag        | Argument         | Description                                      |
+|-------------|------------------|--------------------------------------------------|
+| `--github`  | `owner/repo`     | GitHub repository (shorthand for the HTTPS URL). |
+| `--local`   | `./path`         | Local git repository, cloned into the store.     |
+| `--url`     | `https://...`    | Arbitrary remote git URL.                        |
 
 ### Supported Targets
 
@@ -43,10 +53,16 @@ In verbose mode, it prints a notice.
 ### jolene install
 
 ```
-jolene install <source> [--to <target>...]
+jolene install --github <owner/repo> [--to <target>...]
+jolene install --local  <path>       [--to <target>...]
+jolene install --url    <git-url>    [--to <target>...]
 ```
 
-- `<source>` — GitHub repository in `Author/repo` format.
+Exactly one of `--github`, `--local`, or `--url` is required.
+
+- `--github <owner/repo>` — GitHub repository. Expands to `https://github.com/{owner}/{repo}.git`.
+- `--local <path>` — Local git repository. Cloned into the store; the original is not modified.
+- `--url <git-url>` — Arbitrary remote git URL.
 - `--to <target>` — Target slug(s). Repeatable. If omitted, installs to all
   targets whose config root directory exists on the system.
 
@@ -57,10 +73,10 @@ jolene install <source> [--to <target>...]
 3. For each target, create symlinks for all supported content types.
 4. Record installation in the state file.
 
-**Example:**
+**Example (GitHub):**
 
 ```
-$ jolene install junebug/review-tools --to opencode
+$ jolene install --github junebug/review-tools --to opencode
 Installing junebug/review-tools...
   Cloning https://github.com/junebug/review-tools.git
   Found: 1 command, 2 skills
@@ -71,6 +87,21 @@ Installing junebug/review-tools...
     + skills/style-check/ -> ~/.config/opencode/skills/style-check/
 
 Installed junebug/review-tools to opencode
+```
+
+**Example (local):**
+
+```
+$ jolene install --local ./my-tools
+Installing /Users/you/projects/my-tools...
+  Cloning /Users/you/projects/my-tools
+  Found: 2 commands
+
+  Installing to claude-code:
+    + commands/foo.md -> ~/.claude/commands/foo.md
+    + commands/bar.md -> ~/.claude/commands/bar.md
+
+Installed /Users/you/projects/my-tools to claude-code
 ```
 
 ### jolene uninstall
@@ -95,14 +126,22 @@ jolene list [--target <target>]
 Installed packages:
 
   junebug/review-tools
+    Source:  github
     Targets: opencode, claude-code
     Content: 1 command, 2 skills
-    Version: 1.0.0 (main@abc1234)
+    Version: (main@abc1234)
 
-  junebug/agent-learning-system
+  /Users/you/projects/my-tools
+    Source:  local
     Targets: claude-code
-    Content: 6 commands
-    Version: 0.2.0 (main@def5678)
+    Content: 2 commands
+    Version: (main@def5678)
+
+  https://gitlab.com/someone/cool-tools.git
+    Source:  url
+    Targets: claude-code
+    Content: 3 skills
+    Version: (main@fed9876)
 ```
 
 ### jolene update
@@ -138,7 +177,7 @@ Verifies health of all installations:
 
 ## 2. Package Format
 
-A jolene package is a GitHub repository with a `jolene.toml` manifest and
+A jolene package is a git repository with a `jolene.toml` manifest and
 content organized in conventional directories.
 
 ### Directory Structure
@@ -231,9 +270,13 @@ All jolene data lives under `~/.jolene/`.
 ~/.jolene/
   state.toml                        # installation state
   repos/                            # cloned repositories
-    junebug/
+    junebug/                        # GitHub: {owner}/
       review-tools/                 # git clone
       agent-learning-system/        # git clone
+    local/                          # --local installs
+      my-tools/                     # git clone (copy of local repo)
+    remote/                         # --url installs
+      gitlab.com-someone-cool-tools/ # git clone
 ```
 
 ### State File: state.toml
@@ -242,12 +285,14 @@ Tracks installed packages and their symlinks.
 
 ```toml
 [[packages]]
-source = "junebug/review-tools"
-clone_path = "repos/junebug/review-tools"
-branch = "main"
-commit = "abc1234def5678"
+source_kind = "github"
+source      = "junebug/review-tools"
+clone_url   = "https://github.com/junebug/review-tools.git"
+clone_path  = "repos/junebug/review-tools"
+branch      = "main"
+commit      = "abc1234def5678"
 installed_at = "2026-02-28T10:00:00Z"
-updated_at = "2026-02-28T10:00:00Z"
+updated_at   = "2026-02-28T10:00:00Z"
 
   [[packages.installations]]
   target = "opencode"
@@ -271,6 +316,19 @@ updated_at = "2026-02-28T10:00:00Z"
 - `dst` paths use `~` for home directory (expanded at runtime).
 - `clone_path` is relative to `~/.jolene/`.
 
+**Source fields:**
+
+| Field         | Description                                                    |
+|---------------|----------------------------------------------------------------|
+| `source_kind` | `"github"` \| `"local"` \| `"url"`. Defaults to `"github"` for pre-existing entries. |
+| `source`      | Human-readable identifier: `owner/repo`, absolute path, or URL. Used for display and lookup. |
+| `clone_url`   | The git URL used to clone the package. Empty string for pre-existing entries. |
+
+**Store key:** The two-component path under `repos/` is the store key:
+- GitHub: `{owner}/{repo}`
+- Local: `local/{dirname}`
+- URL: `remote/{sanitized-host-and-path}` (scheme and `.git` stripped, separators replaced with `-`)
+
 **Atomicity:** The state file is written to a temp file then renamed,
 preventing corruption on interruption.
 
@@ -281,11 +339,18 @@ preventing corruption on interruption.
 ### Install: Step by Step
 
 ```
-1. PARSE source into author + repo. Build GitHub URL.
+1. RESOLVE SOURCE
+   --github owner/repo → clone URL: https://github.com/{owner}/{repo}.git
+                         store key: {owner}/{repo}
+   --local  ./path     → clone URL: absolute path (git supports local clones)
+                         store key: local/{dirname}
+   --url    https://…  → clone URL: the URL as-is
+                         store key: remote/{sanitized} (scheme + .git stripped,
+                                    path separators replaced with -)
 
 2. FETCH
-   - Exists in store? → git fetch && git pull
-   - New? → git clone into ~/.jolene/repos/{author}/{repo}/
+   - Exists in store? → git pull
+   - New? → git clone into ~/.jolene/repos/{store-key}/
 
 3. VALIDATE
    - jolene.toml must exist and parse correctly (all required fields).
@@ -438,6 +503,12 @@ This avoids breakage from shell or working directory context.
 ---
 
 ## 7. Error Handling
+
+### Local Path Not Found
+
+```
+Error: Cannot access local path: ./nonexistent
+```
 
 ### Package Not Found
 
