@@ -5,7 +5,7 @@ use crate::config::clone_dir;
 use crate::git;
 use crate::output::Output;
 use crate::state;
-use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
+use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink, SymlinkPlan};
 use crate::types::source::Source;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
@@ -43,7 +43,6 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     let src = Source::parse(&pkg.source)?;
     let pkg_source = pkg.source.clone();
-
     let clone_root = clone_dir(&src.author, &src.repo)?;
 
     // 1. Pull — detect no-op early.
@@ -64,11 +63,21 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
 
-    // 3. Per installation: sync symlinks.
-    //    Order: create new symlinks first, then remove old ones.
-    //    This way a failure during creation leaves existing symlinks intact.
+    // 3. Phase 1: plan all additions across all targets (no side effects).
+    //    Collect removals too, but don't act on them yet.
+    use std::collections::HashSet;
+
+    struct TargetStage {
+        target_slug: String,
+        new_srcs: HashSet<String>,
+        plans: Vec<SymlinkPlan>,
+        /// dst display paths (~/...) of symlinks to remove after additions succeed.
+        removals: Vec<String>,
+    }
+
     let pkg = state::find_package(app_state, source)?.unwrap();
     let installations: Vec<_> = pkg.installations.clone();
+    let mut staged: Vec<TargetStage> = Vec::new();
 
     for inst in &installations {
         let target = crate::types::target::Target::from_slug(&inst.target);
@@ -81,7 +90,6 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             .config_root()
             .ok_or_else(|| anyhow::anyhow!("Cannot determine config root for {}", target))?;
 
-        // Supported items for this target.
         let supported: Vec<_> = items
             .iter()
             .filter(|item| match item.content_type {
@@ -92,48 +100,82 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             .cloned()
             .collect();
 
-        let new_srcs: std::collections::HashSet<String> = supported
+        let new_srcs: HashSet<String> = supported
             .iter()
             .map(|i| i.relative_path().to_string_lossy().into_owned())
             .collect();
 
-        let existing_srcs: std::collections::HashSet<String> =
+        let existing_srcs: HashSet<String> =
             inst.symlinks.iter().map(|e| e.src.clone()).collect();
 
-        // Create symlinks for new content first — bail on failure before any removals.
         let new_items: Vec<_> = supported
             .iter()
             .filter(|i| !existing_srcs.contains(&i.relative_path().to_string_lossy().into_owned()))
             .cloned()
             .collect();
 
-        let plans = plan_symlinks(&new_items, &clone_root, &target_root, inst.target.as_str(), &pkg_source)?;
-        let new_entries = execute_symlinks(&plans)?;
+        let plans = plan_symlinks(
+            &new_items,
+            &clone_root,
+            &target_root,
+            inst.target.as_str(),
+            &pkg_source,
+        )?;
 
+        let removals: Vec<String> = inst
+            .symlinks
+            .iter()
+            .filter(|e| !new_srcs.contains(&e.src))
+            .map(|e| e.dst.clone())
+            .collect();
+
+        staged.push(TargetStage {
+            target_slug: inst.target.clone(),
+            new_srcs,
+            plans,
+            removals,
+        });
+    }
+
+    // 4. Phase 2: execute all additions atomically.
+    //    A failure here rolls back all created symlinks; no removals have happened.
+    let plan_counts: Vec<usize> = staged.iter().map(|s| s.plans.len()).collect();
+    let target_slugs: Vec<String> = staged.iter().map(|s| s.target_slug.clone()).collect();
+    let new_srcs_per_target: Vec<HashSet<String>> =
+        staged.iter().map(|s| s.new_srcs.clone()).collect();
+    let removals_per_target: Vec<Vec<String>> =
+        staged.iter().map(|s| s.removals.clone()).collect();
+
+    let all_plans: Vec<_> = staged.into_iter().flat_map(|s| s.plans).collect();
+    let all_entries = execute_symlinks(&all_plans)?;
+
+    // 5. Phase 3: removals and state update per target.
+    //    Additions are on disk; removing old symlinks now is safe.
+    let mut offset = 0;
+    for (idx, slug) in target_slugs.iter().enumerate() {
+        let count = plan_counts[idx];
+        let new_entries = all_entries[offset..offset + count].to_vec();
+        offset += count;
+
+        out.print(format!("\n  Updating {}:", slug));
         for entry in &new_entries {
             out.print(format!("    + {} -> {}", entry.src, entry.dst));
         }
-
-        // Remove symlinks for content that no longer exists.
-        for entry in &inst.symlinks {
-            if !new_srcs.contains(&entry.src) {
-                if let Some(dst) = expand_tilde(&entry.dst) {
-                    remove_symlink(&dst)?;
-                    out.print(format!("    - {} (removed)", entry.dst));
-                }
+        for dst_str in &removals_per_target[idx] {
+            if let Some(dst) = expand_tilde(dst_str) {
+                remove_symlink(&dst)?;
+                out.print(format!("    - {} (removed)", dst_str));
             }
         }
 
-        // Update in-memory state for this installation.
         let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
-        if let Some(inst_mut) = pkg_mut.installations.iter_mut().find(|i| i.target == inst.target)
-        {
-            inst_mut.symlinks.retain(|e| new_srcs.contains(&e.src));
+        if let Some(inst_mut) = pkg_mut.installations.iter_mut().find(|i| i.target == *slug) {
+            inst_mut.symlinks.retain(|e| new_srcs_per_target[idx].contains(&e.src));
             inst_mut.symlinks.extend(new_entries);
         }
     }
 
-    // 4. Update commit and timestamp, then persist.
+    // 6. Update commit and timestamp, then persist once.
     let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
     pkg_mut.commit = new_commit;
     pkg_mut.branch = new_branch;
