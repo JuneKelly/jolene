@@ -4,7 +4,11 @@
       "WebSearch",
       "WebFetch(domain:opencode.ai)",
       "WebFetch(domain:developers.openai.com)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(bd:*)",
+      "Bash(rustc:*)",
+      "Bash(git checkout:*)",
+      "Bash(cargo fetch:*)"
     ]
   }
 }

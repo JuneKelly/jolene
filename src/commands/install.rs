@@ -1,0 +1,194 @@
+use anyhow::{bail, Result};
+use chrono::Utc;
+
+use crate::config::clone_dir;
+use crate::git;
+use crate::output::Output;
+use crate::state;
+use crate::symlink::{execute_symlinks, plan_symlinks};
+use crate::types::source::Source;
+use crate::types::state::{Installation, PackageState};
+use crate::types::target::Target;
+use crate::validation::{collect_content_items, load_manifest, validate_manifest};
+
+pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
+    // 1. Parse source
+    let source = Source::parse(source_str)?;
+
+    out.print(format!("Installing {}...", source));
+
+    // 2. Clone or pull
+    let clone_root = clone_dir(&source.author, &source.repo)?;
+
+    if clone_root.exists() {
+        out.verbose(format!("  Updating {}", source));
+        git::pull(&clone_root)?;
+    } else {
+        out.print(format!("  Cloning {}", source.github_url()));
+        git::clone(&source.github_url(), &clone_root)?;
+    }
+
+    // 3. Validate
+    let manifest = load_manifest(&clone_root)
+        .map_err(|e| anyhow::anyhow!("Error: {}/{} {}", source.author, source.repo, e))?;
+
+    validate_manifest(&manifest, &clone_root)
+        .map_err(|e| anyhow::anyhow!("Error: {}/{} {}", source.author, source.repo, e))?;
+
+    let items = collect_content_items(&manifest);
+
+    out.print(format!("  Found: {}", manifest.content.summary()));
+
+    // 4. Resolve targets
+    let targets = resolve_targets(to)?;
+
+    if targets.is_empty() {
+        bail!(
+            "No supported targets detected.\n  None found: ~/.claude/, ~/.config/opencode/, ~/.codex/\n  Use --to <target> to specify a target explicitly."
+        );
+    }
+
+    // 5-7. Per-target: check conflicts, create dirs, create symlinks
+    let branch = git::current_branch(&clone_root)?;
+    let commit = git::full_commit(&clone_root)?;
+    let _short = git::short_commit(&clone_root)?;
+    let now = Utc::now();
+
+    let mut new_installations: Vec<Installation> = Vec::new();
+
+    for target in &targets {
+        let target_root = target
+            .config_root()
+            .ok_or_else(|| anyhow::anyhow!("Cannot determine config root for {}", target))?;
+
+        // Filter items to those supported by this target
+        let supported: Vec<_> = items
+            .iter()
+            .filter(|item| match item.content_type {
+                crate::types::content::ContentType::Command => target.supports_commands(),
+                crate::types::content::ContentType::Skill => target.supports_skills(),
+                crate::types::content::ContentType::Agent => target.supports_agents(),
+            })
+            .cloned()
+            .collect();
+
+        let skipped_commands = items
+            .iter()
+            .filter(|i| {
+                i.content_type == crate::types::content::ContentType::Command
+                    && !target.supports_commands()
+            })
+            .count();
+        let skipped_agents = items
+            .iter()
+            .filter(|i| {
+                i.content_type == crate::types::content::ContentType::Agent
+                    && !target.supports_agents()
+            })
+            .count();
+
+        if skipped_commands > 0 {
+            out.verbose(format!(
+                "  Skipping {} command{} for {} (not supported)",
+                skipped_commands,
+                if skipped_commands == 1 { "" } else { "s" },
+                target
+            ));
+        }
+        if skipped_agents > 0 {
+            out.verbose(format!(
+                "  Skipping {} agent{} for {} (not supported)",
+                skipped_agents,
+                if skipped_agents == 1 { "" } else { "s" },
+                target
+            ));
+        }
+
+        out.print(format!("\n  Installing to {}:", target));
+
+        let plans = plan_symlinks(&supported, &clone_root, &target_root, &source.display_name())
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Conflict installing {} to {}:\n  {}",
+                    source,
+                    target,
+                    e
+                )
+            })?;
+
+        let entries = execute_symlinks(&plans)?;
+
+        for entry in &entries {
+            out.print(format!("    + {} -> {}", entry.src, entry.dst));
+        }
+
+        new_installations.push(Installation {
+            target: target.slug().to_string(),
+            symlinks: entries,
+        });
+    }
+
+    // 8. Record state
+    let mut app_state = state::load()?;
+
+    let clone_path = format!("repos/{}/{}", source.author, source.repo);
+
+    match state::find_package_mut(&mut app_state, &source.display_name())? {
+        Some(existing) => {
+            existing.branch = branch;
+            existing.commit = commit;
+            existing.updated_at = now;
+            for inst in new_installations {
+                if let Some(existing_inst) = existing
+                    .installations
+                    .iter_mut()
+                    .find(|i| i.target == inst.target)
+                {
+                    existing_inst.symlinks = inst.symlinks;
+                } else {
+                    existing.installations.push(inst);
+                }
+            }
+        }
+        None => {
+            app_state.packages.push(PackageState {
+                source: source.display_name(),
+                clone_path,
+                branch,
+                commit,
+                installed_at: now,
+                updated_at: now,
+                installations: new_installations,
+            });
+        }
+    }
+
+    state::save(&app_state)?;
+
+    let target_names: Vec<_> = targets.iter().map(|t| t.slug().to_string()).collect();
+    out.print(format!(
+        "\nInstalled {} to {}",
+        source,
+        target_names.join(", ")
+    ));
+
+    Ok(())
+}
+
+pub fn resolve_targets(to: &[String]) -> Result<Vec<Target>> {
+    if to.is_empty() {
+        return Ok(Target::detect_available());
+    }
+
+    let mut targets = Vec::new();
+    for slug in to {
+        match Target::from_slug(slug) {
+            Some(t) => targets.push(t),
+            None => bail!(
+                "Unknown target '{}'.\n  Supported targets: claude-code, opencode, codex",
+                slug
+            ),
+        }
+    }
+    Ok(targets)
+}

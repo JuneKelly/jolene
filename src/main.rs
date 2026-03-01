@@ -1,3 +1,37 @@
+mod cli;
+mod commands;
+mod config;
+mod git;
+mod output;
+mod state;
+mod symlink;
+mod types;
+mod validation;
+
+use clap::Parser;
+
+use cli::{Cli, Command};
+use output::Output;
+
 fn main() {
-    println!("Hello, world!");
+    let cli = Cli::parse();
+    let out = Output::new(cli.verbose, cli.quiet);
+
+    let result = match &cli.command {
+        Command::Install { source, to } => commands::install::run(source, to, &out),
+        Command::Uninstall {
+            package,
+            from,
+            purge,
+        } => commands::uninstall::run(package, from, *purge, &out),
+        Command::List { target } => commands::list::run(target.as_deref(), &out),
+        Command::Update { package } => commands::update::run(package.as_deref(), &out),
+        Command::Info { package } => commands::info::run(package, &out),
+        Command::Doctor => commands::doctor::run(&out),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
 }
