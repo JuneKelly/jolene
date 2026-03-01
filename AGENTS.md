@@ -8,7 +8,8 @@ Currently, this project is in the exploration phase, and subject to change.
 
 ## Key Files
 
-- @docs/SPEC.md: specification.
+- @README.md: project readme
+- @docs/SPEC.md: specification
 
 ## Technology and Implementation
 
