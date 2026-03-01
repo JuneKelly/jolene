@@ -6,10 +6,12 @@ use crate::git;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
+use crate::types::source::Source;
+use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
 pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
-    let app_state = state::load()?;
+    let mut app_state = state::load()?;
 
     let sources: Vec<String> = match package {
         Some(name) => {
@@ -29,41 +31,43 @@ pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
 
     for source in &sources {
         out.print(format!("Updating {}...", source));
-        update_one(source, out)?;
+        update_one(source, &mut app_state, out)?;
     }
 
     Ok(())
 }
 
-fn update_one(source: &str, out: &Output) -> Result<()> {
-    let mut app_state = state::load()?;
-
-    let pkg = state::find_package(&app_state, source)?
+fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
+    let pkg = state::find_package(app_state, source)?
         .ok_or_else(|| anyhow::anyhow!("Package '{}' not found in state.", source))?;
 
-    let parts: Vec<&str> = pkg.source.splitn(2, '/').collect();
-    let (author, repo) = match parts.as_slice() {
-        [a, r] => (*a, *r),
-        _ => bail!("Invalid source in state: {}", source),
-    };
+    let src = Source::parse(&pkg.source)?;
     let pkg_source = pkg.source.clone();
 
-    let clone_root = clone_dir(author, repo)?;
+    let clone_root = clone_dir(&src.author, &src.repo)?;
 
-    // 1. Pull
+    // 1. Pull — detect no-op early.
+    let old_commit = git::full_commit(&clone_root)?;
     git::pull(&clone_root)?;
+    let new_commit = git::full_commit(&clone_root)?;
 
-    // 2. Validate updated manifest
+    if old_commit == new_commit {
+        out.print(format!("  {} is already up to date.", source));
+        return Ok(());
+    }
+
+    // 2. Validate updated manifest.
     let manifest = load_manifest(&clone_root)?;
     validate_manifest(&manifest, &clone_root)?;
     let items = collect_content_items(&manifest);
 
-    let new_commit = git::full_commit(&clone_root)?;
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
 
-    // 3. Per installation: sync symlinks
-    let pkg = state::find_package(&app_state, source)?.unwrap();
+    // 3. Per installation: sync symlinks.
+    //    Order: create new symlinks first, then remove old ones.
+    //    This way a failure during creation leaves existing symlinks intact.
+    let pkg = state::find_package(app_state, source)?.unwrap();
     let installations: Vec<_> = pkg.installations.clone();
 
     for inst in &installations {
@@ -77,7 +81,7 @@ fn update_one(source: &str, out: &Output) -> Result<()> {
             .config_root()
             .ok_or_else(|| anyhow::anyhow!("Cannot determine config root for {}", target))?;
 
-        // Supported items for this target
+        // Supported items for this target.
         let supported: Vec<_> = items
             .iter()
             .filter(|item| match item.content_type {
@@ -88,30 +92,18 @@ fn update_one(source: &str, out: &Output) -> Result<()> {
             .cloned()
             .collect();
 
-        // Remove symlinks for content that no longer exists
         let new_srcs: std::collections::HashSet<String> = supported
             .iter()
             .map(|i| i.relative_path().to_string_lossy().into_owned())
             .collect();
 
-        for entry in &inst.symlinks {
-            if !new_srcs.contains(&entry.src) {
-                if let Some(dst) = expand_tilde(&entry.dst) {
-                    remove_symlink(&dst)?;
-                    out.print(format!("    - {} (removed)", entry.dst));
-                }
-            }
-        }
-
-        // Create symlinks for new content
         let existing_srcs: std::collections::HashSet<String> =
             inst.symlinks.iter().map(|e| e.src.clone()).collect();
 
+        // Create symlinks for new content first — bail on failure before any removals.
         let new_items: Vec<_> = supported
             .iter()
-            .filter(|i| {
-                !existing_srcs.contains(&i.relative_path().to_string_lossy().into_owned())
-            })
+            .filter(|i| !existing_srcs.contains(&i.relative_path().to_string_lossy().into_owned()))
             .cloned()
             .collect();
 
@@ -122,8 +114,18 @@ fn update_one(source: &str, out: &Output) -> Result<()> {
             out.print(format!("    + {} -> {}", entry.src, entry.dst));
         }
 
-        // Update installation symlinks in state
-        let pkg_mut = state::find_package_mut(&mut app_state, source)?.unwrap();
+        // Remove symlinks for content that no longer exists.
+        for entry in &inst.symlinks {
+            if !new_srcs.contains(&entry.src) {
+                if let Some(dst) = expand_tilde(&entry.dst) {
+                    remove_symlink(&dst)?;
+                    out.print(format!("    - {} (removed)", entry.dst));
+                }
+            }
+        }
+
+        // Update in-memory state for this installation.
+        let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
         if let Some(inst_mut) = pkg_mut.installations.iter_mut().find(|i| i.target == inst.target)
         {
             inst_mut.symlinks.retain(|e| new_srcs.contains(&e.src));
@@ -131,13 +133,13 @@ fn update_one(source: &str, out: &Output) -> Result<()> {
         }
     }
 
-    // 4. Update commit and timestamp
-    let pkg_mut = state::find_package_mut(&mut app_state, source)?.unwrap();
+    // 4. Update commit and timestamp, then persist.
+    let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
     pkg_mut.commit = new_commit;
     pkg_mut.branch = new_branch;
     pkg_mut.updated_at = now;
 
-    state::save(&app_state)?;
+    state::save(app_state)?;
 
     out.print(format!("Updated {}", source));
     Ok(())

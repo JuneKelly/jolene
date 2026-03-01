@@ -3,6 +3,7 @@ use anyhow::{bail, Result};
 use crate::config::clone_dir;
 use crate::output::Output;
 use crate::state;
+use crate::types::source::Source;
 use crate::validation::load_manifest;
 
 pub fn run(package: &str, out: &Output) -> Result<()> {
@@ -14,12 +15,7 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
         None => bail!("Package '{}' is not installed.", package),
     };
 
-    let parts: Vec<&str> = pkg.source.splitn(2, '/').collect();
-    let (author, repo) = match parts.as_slice() {
-        [a, r] => (*a, *r),
-        _ => (pkg.source.as_str(), ""),
-    };
-
+    let src = Source::parse(&pkg.source)?;
     let short = &pkg.commit[..pkg.commit.len().min(7)];
 
     out.print(format!("{}", pkg.source));
@@ -35,7 +31,7 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
     ));
 
     // Manifest details
-    if let Ok(clone_root) = clone_dir(author, repo) {
+    if let Ok(clone_root) = clone_dir(&src.author, &src.repo) {
         if let Ok(manifest) = load_manifest(&clone_root) {
             out.print(format!("  Version:   {}", manifest.package.version));
             out.print(format!("  Description: {}", manifest.package.description));
