@@ -63,3 +63,82 @@ impl ContentDecl {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decl(commands: &[&str], skills: &[&str], agents: &[&str]) -> ContentDecl {
+        ContentDecl {
+            commands: commands.iter().map(|s| s.to_string()).collect(),
+            skills: skills.iter().map(|s| s.to_string()).collect(),
+            agents: agents.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn is_empty_when_all_vecs_empty() {
+        assert!(ContentDecl::default().is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_when_commands_present() {
+        assert!(!decl(&["review"], &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_when_skills_present() {
+        assert!(!decl(&[], &["code-analysis"], &[]).is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_when_agents_present() {
+        assert!(!decl(&[], &[], &["reviewer"]).is_empty());
+    }
+
+    #[test]
+    fn summary_empty_returns_no_content() {
+        assert_eq!(ContentDecl::default().summary(), "no content");
+    }
+
+    #[test]
+    fn summary_singular_command() {
+        assert_eq!(decl(&["review"], &[], &[]).summary(), "1 command");
+    }
+
+    #[test]
+    fn summary_plural_commands() {
+        assert_eq!(decl(&["review", "deploy"], &[], &[]).summary(), "2 commands");
+    }
+
+    #[test]
+    fn summary_singular_skill() {
+        assert_eq!(decl(&[], &["analysis"], &[]).summary(), "1 skill");
+    }
+
+    #[test]
+    fn summary_plural_skills() {
+        assert_eq!(decl(&[], &["analysis", "style"], &[]).summary(), "2 skills");
+    }
+
+    #[test]
+    fn summary_singular_agent() {
+        assert_eq!(decl(&[], &[], &["reviewer"]).summary(), "1 agent");
+    }
+
+    #[test]
+    fn summary_plural_agents() {
+        assert_eq!(
+            decl(&[], &[], &["reviewer", "planner"]).summary(),
+            "2 agents"
+        );
+    }
+
+    #[test]
+    fn summary_all_types() {
+        assert_eq!(
+            decl(&["review"], &["analysis", "style"], &["reviewer"]).summary(),
+            "1 command, 2 skills, 1 agent"
+        );
+    }
+}

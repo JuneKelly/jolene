@@ -79,3 +79,66 @@ impl ContentItem {
         content_dir.join(self.dest_name())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_relative_path() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        assert_eq!(item.relative_path(), PathBuf::from("commands/review.md"));
+    }
+
+    #[test]
+    fn skill_relative_path() {
+        let item = ContentItem::new(ContentType::Skill, "code-analysis");
+        assert_eq!(item.relative_path(), PathBuf::from("skills/code-analysis"));
+    }
+
+    #[test]
+    fn agent_relative_path() {
+        let item = ContentItem::new(ContentType::Agent, "reviewer");
+        assert_eq!(item.relative_path(), PathBuf::from("agents/reviewer.md"));
+    }
+
+    #[test]
+    fn command_dest_name_has_md_extension() {
+        let item = ContentItem::new(ContentType::Command, "deploy");
+        assert_eq!(item.dest_name(), "deploy.md");
+    }
+
+    #[test]
+    fn skill_dest_name_has_no_extension() {
+        let item = ContentItem::new(ContentType::Skill, "style-check");
+        assert_eq!(item.dest_name(), "style-check");
+    }
+
+    #[test]
+    fn agent_dest_name_has_md_extension() {
+        let item = ContentItem::new(ContentType::Agent, "reviewer");
+        assert_eq!(item.dest_name(), "reviewer.md");
+    }
+
+    #[test]
+    fn source_path_joins_clone_root() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        let root = Path::new("/home/user/.jolene/repos/junebug/review-tools");
+        assert_eq!(
+            item.source_path(root),
+            PathBuf::from(
+                "/home/user/.jolene/repos/junebug/review-tools/commands/review.md"
+            )
+        );
+    }
+
+    #[test]
+    fn dest_path_joins_content_dir() {
+        let item = ContentItem::new(ContentType::Skill, "code-analysis");
+        let content_dir = Path::new("/home/user/.claude/skills");
+        assert_eq!(
+            item.dest_path(content_dir),
+            PathBuf::from("/home/user/.claude/skills/code-analysis")
+        );
+    }
+}

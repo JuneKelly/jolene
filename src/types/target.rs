@@ -76,3 +76,68 @@ impl fmt::Display for Target {
         write!(f, "{}", self.slug())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_slug_known_values() {
+        assert_eq!(Target::from_slug("claude-code"), Some(Target::ClaudeCode));
+        assert_eq!(Target::from_slug("opencode"), Some(Target::OpenCode));
+        assert_eq!(Target::from_slug("codex"), Some(Target::Codex));
+    }
+
+    #[test]
+    fn from_slug_unknown_returns_none() {
+        assert_eq!(Target::from_slug("vscode"), None);
+        assert_eq!(Target::from_slug(""), None);
+        assert_eq!(Target::from_slug("Claude-Code"), None);
+    }
+
+    #[test]
+    fn slug_roundtrips_through_from_slug() {
+        for target in Target::all() {
+            assert_eq!(Target::from_slug(target.slug()), Some(*target));
+        }
+    }
+
+    #[test]
+    fn supports_commands() {
+        assert!(Target::ClaudeCode.supports_commands());
+        assert!(Target::OpenCode.supports_commands());
+        assert!(!Target::Codex.supports_commands());
+    }
+
+    #[test]
+    fn supports_skills_for_all_targets() {
+        for target in Target::all() {
+            assert!(target.supports_skills(), "{} should support skills", target.slug());
+        }
+    }
+
+    #[test]
+    fn supports_agents() {
+        assert!(Target::ClaudeCode.supports_agents());
+        assert!(Target::OpenCode.supports_agents());
+        assert!(!Target::Codex.supports_agents());
+    }
+
+    #[test]
+    fn display_matches_slug() {
+        for target in Target::all() {
+            assert_eq!(format!("{target}"), target.slug());
+        }
+    }
+
+    #[test]
+    fn config_root_is_some() {
+        for target in Target::all() {
+            assert!(
+                target.config_root().is_some(),
+                "{} config_root returned None",
+                target.slug()
+            );
+        }
+    }
+}

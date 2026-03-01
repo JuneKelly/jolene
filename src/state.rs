@@ -96,3 +96,68 @@ pub fn find_package_mut<'a>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use crate::types::state::{PackageState, State};
+
+    use super::find_package;
+
+    fn make_pkg(source: &str) -> PackageState {
+        PackageState {
+            source: source.to_string(),
+            clone_path: format!("repos/{}", source),
+            branch: "main".to_string(),
+            commit: "abc123".to_string(),
+            installed_at: Utc::now(),
+            updated_at: Utc::now(),
+            installations: vec![],
+        }
+    }
+
+    fn make_state(sources: &[&str]) -> State {
+        State {
+            packages: sources.iter().map(|s| make_pkg(s)).collect(),
+        }
+    }
+
+    #[test]
+    fn find_by_full_name() {
+        let state = make_state(&["alice/tools", "bob/utils"]);
+        let pkg = find_package(&state, "alice/tools").unwrap().unwrap();
+        assert_eq!(pkg.source, "alice/tools");
+    }
+
+    #[test]
+    fn find_by_repo_name_unambiguous() {
+        let state = make_state(&["alice/tools", "bob/utils"]);
+        let pkg = find_package(&state, "tools").unwrap().unwrap();
+        assert_eq!(pkg.source, "alice/tools");
+    }
+
+    #[test]
+    fn find_by_repo_name_ambiguous_errors() {
+        let state = make_state(&["alice/tools", "bob/tools"]);
+        assert!(find_package(&state, "tools").is_err());
+    }
+
+    #[test]
+    fn find_missing_full_name_returns_none() {
+        let state = make_state(&["alice/tools"]);
+        assert!(find_package(&state, "alice/other").unwrap().is_none());
+    }
+
+    #[test]
+    fn find_missing_repo_name_returns_none() {
+        let state = make_state(&["alice/tools"]);
+        assert!(find_package(&state, "other").unwrap().is_none());
+    }
+
+    #[test]
+    fn find_in_empty_state_returns_none() {
+        let state = make_state(&[]);
+        assert!(find_package(&state, "alice/tools").unwrap().is_none());
+    }
+}

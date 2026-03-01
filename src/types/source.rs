@@ -44,3 +44,71 @@ impl FromStr for Source {
         Source::parse(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid() {
+        let s = Source::parse("junebug/review-tools").unwrap();
+        assert_eq!(s.author, "junebug");
+        assert_eq!(s.repo, "review-tools");
+    }
+
+    #[test]
+    fn parse_missing_slash_errors() {
+        assert!(Source::parse("junebug").is_err());
+    }
+
+    #[test]
+    fn parse_empty_author_errors() {
+        assert!(Source::parse("/repo").is_err());
+    }
+
+    #[test]
+    fn parse_empty_repo_errors() {
+        assert!(Source::parse("author/").is_err());
+    }
+
+    #[test]
+    fn parse_empty_string_errors() {
+        assert!(Source::parse("").is_err());
+    }
+
+    #[test]
+    fn parse_extra_slash_kept_in_repo() {
+        // splitn(2, '/') puts everything after the first slash into repo
+        let s = Source::parse("a/b/c").unwrap();
+        assert_eq!(s.author, "a");
+        assert_eq!(s.repo, "b/c");
+    }
+
+    #[test]
+    fn github_url() {
+        let s = Source::parse("junebug/review-tools").unwrap();
+        assert_eq!(
+            s.github_url(),
+            "https://github.com/junebug/review-tools.git"
+        );
+    }
+
+    #[test]
+    fn display_name_roundtrips() {
+        let s = Source::parse("junebug/review-tools").unwrap();
+        assert_eq!(s.display_name(), "junebug/review-tools");
+    }
+
+    #[test]
+    fn display_impl_matches_display_name() {
+        let s = Source::parse("junebug/review-tools").unwrap();
+        assert_eq!(format!("{s}"), s.display_name());
+    }
+
+    #[test]
+    fn from_str_parses_correctly() {
+        let s: Source = "junebug/review-tools".parse().unwrap();
+        assert_eq!(s.author, "junebug");
+        assert_eq!(s.repo, "review-tools");
+    }
+}
