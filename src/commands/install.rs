@@ -5,7 +5,7 @@ use crate::config::clone_dir;
 use crate::git;
 use crate::output::Output;
 use crate::state;
-use crate::symlink::{execute_symlinks, plan_symlinks};
+use crate::symlink::{execute_symlinks, plan_symlinks, SymlinkPlan};
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState};
 use crate::types::target::Target;
@@ -21,7 +21,7 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
     let clone_root = clone_dir(&source.author, &source.repo)?;
 
     if clone_root.exists() {
-        out.verbose(format!("  Updating {}", source));
+        out.print(format!("  Updating existing clone..."));
         git::pull(&clone_root)?;
     } else {
         out.print(format!("  Cloning {}", source.github_url()));
@@ -48,43 +48,42 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
         );
     }
 
-    // 5-7. Per-target: check conflicts, create dirs, create symlinks
+    // 5-6. Phase 1: check conflicts and collect all plans (no side effects).
+    //      Abort on first conflict before any symlinks are created.
     let branch = git::current_branch(&clone_root)?;
     let commit = git::full_commit(&clone_root)?;
-    let _short = git::short_commit(&clone_root)?;
     let now = Utc::now();
 
-    let mut new_installations: Vec<Installation> = Vec::new();
+    use crate::types::content::ContentType;
+
+    struct TargetStage {
+        plans: Vec<SymlinkPlan>,
+    }
+
+    let mut staged: Vec<TargetStage> = Vec::new();
 
     for target in &targets {
         let target_root = target
             .config_root()
             .ok_or_else(|| anyhow::anyhow!("Cannot determine config root for {}", target))?;
 
-        // Filter items to those supported by this target
         let supported: Vec<_> = items
             .iter()
             .filter(|item| match item.content_type {
-                crate::types::content::ContentType::Command => target.supports_commands(),
-                crate::types::content::ContentType::Skill => target.supports_skills(),
-                crate::types::content::ContentType::Agent => target.supports_agents(),
+                ContentType::Command => target.supports_commands(),
+                ContentType::Skill => target.supports_skills(),
+                ContentType::Agent => target.supports_agents(),
             })
             .cloned()
             .collect();
 
         let skipped_commands = items
             .iter()
-            .filter(|i| {
-                i.content_type == crate::types::content::ContentType::Command
-                    && !target.supports_commands()
-            })
+            .filter(|i| i.content_type == ContentType::Command && !target.supports_commands())
             .count();
         let skipped_agents = items
             .iter()
-            .filter(|i| {
-                i.content_type == crate::types::content::ContentType::Agent
-                    && !target.supports_agents()
-            })
+            .filter(|i| i.content_type == ContentType::Agent && !target.supports_agents())
             .count();
 
         if skipped_commands > 0 {
@@ -104,20 +103,30 @@ pub fn run(source_str: &str, to: &[String], out: &Output) -> Result<()> {
             ));
         }
 
-        out.print(format!("\n  Installing to {}:", target));
-
-        let plans = plan_symlinks(&supported, &clone_root, &target_root, &source.display_name())
+        let plans = plan_symlinks(&supported, &clone_root, &target_root, target.slug(), &source.display_name())
             .map_err(|e| {
-                anyhow::anyhow!(
-                    "Conflict installing {} to {}:\n  {}",
-                    source,
-                    target,
-                    e
-                )
+                anyhow::anyhow!("Conflict installing {} to {}:\n  {}", source, target, e)
             })?;
 
-        let entries = execute_symlinks(&plans)?;
+        staged.push(TargetStage { plans });
+    }
 
+    // 7. Phase 2: execute all plans atomically.
+    //    Flattening into one execute_symlinks call means a failure at any point
+    //    rolls back all symlinks created so far, across all targets.
+    let plan_counts: Vec<usize> = staged.iter().map(|s| s.plans.len()).collect();
+    let all_plans: Vec<_> = staged.into_iter().flat_map(|s| s.plans).collect();
+    let all_entries = execute_symlinks(&all_plans)?;
+
+    // Split entries back by target, print output, and build installation records.
+    let mut new_installations: Vec<Installation> = Vec::new();
+    let mut offset = 0;
+
+    for (target, count) in targets.iter().zip(plan_counts.iter()) {
+        let entries = all_entries[offset..offset + count].to_vec();
+        offset += count;
+
+        out.print(format!("\n  Installing to {}:", target));
         for entry in &entries {
             out.print(format!("    + {} -> {}", entry.src, entry.dst));
         }

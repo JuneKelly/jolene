@@ -115,7 +115,7 @@ fn update_one(source: &str, out: &Output) -> Result<()> {
             .cloned()
             .collect();
 
-        let plans = plan_symlinks(&new_items, &clone_root, &target_root, &pkg_source)?;
+        let plans = plan_symlinks(&new_items, &clone_root, &target_root, inst.target.as_str(), &pkg_source)?;
         let new_entries = execute_symlinks(&plans)?;
 
         for entry in &new_entries {

@@ -17,15 +17,31 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
     };
     let source = pkg.source.clone();
 
+    out.print(format!("Uninstalling {}...", source));
+
     // 2. Scope to --from targets, or all if omitted
     let target_slugs: Vec<String> = if from.is_empty() {
         pkg.installations.iter().map(|i| i.target.clone()).collect()
     } else {
+        let installed_targets: Vec<&str> =
+            pkg.installations.iter().map(|i| i.target.as_str()).collect();
         for slug in from {
             if Target::from_slug(slug).is_none() {
                 bail!(
                     "Unknown target '{}'.\n  Supported targets: claude-code, opencode, codex",
                     slug
+                );
+            }
+            if !installed_targets.contains(&slug.as_str()) {
+                bail!(
+                    "{} is not installed to '{}'.\n  Installed targets: {}",
+                    source,
+                    slug,
+                    if installed_targets.is_empty() {
+                        "none".to_string()
+                    } else {
+                        installed_targets.join(", ")
+                    }
                 );
             }
         }

@@ -49,19 +49,6 @@ pub fn current_branch(repo_dir: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-pub fn short_commit(repo_dir: &Path) -> Result<String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .current_dir(repo_dir)
-        .output()
-        .context("Failed to run git rev-parse")?;
-
-    if !output.status.success() {
-        bail!("Could not determine commit in {}", repo_dir.display());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
 pub fn full_commit(repo_dir: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "HEAD"])

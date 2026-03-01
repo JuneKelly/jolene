@@ -331,7 +331,6 @@ dependencies = [
  "dirs",
  "serde",
  "tempfile",
- "thiserror",
  "toml",
 ]
 

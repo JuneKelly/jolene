@@ -63,8 +63,11 @@ pub fn package_from_symlink(target: &Path) -> Option<String> {
 
 /// A planned symlink operation.
 pub struct SymlinkPlan {
+    /// Absolute source path, used to create the symlink.
     pub src: PathBuf,
     pub dst: PathBuf,
+    /// Source path relative to the clone root, stored in state.
+    pub relative_src: String,
 }
 
 /// Build the symlink plan for a set of content items, checking for conflicts.
@@ -73,6 +76,7 @@ pub fn plan_symlinks(
     items: &[ContentItem],
     clone_root: &Path,
     target_root: &Path,
+    target_slug: &str,
     package_source: &str,
 ) -> Result<Vec<SymlinkPlan>> {
     let mut plans = Vec::new();
@@ -82,9 +86,11 @@ pub fn plan_symlinks(
         let content_dir = target_root.join(item.content_type.dir_name());
         let dst = item.dest_path(&content_dir);
 
+        let relative_src = item.relative_path().to_string_lossy().into_owned();
+
         match check_conflict(&dst, package_source)? {
             ConflictCheck::Clear => {
-                plans.push(SymlinkPlan { src, dst });
+                plans.push(SymlinkPlan { src, dst, relative_src });
             }
             ConflictCheck::AlreadyInstalled => {
                 // Already correct — skip silently.
@@ -95,7 +101,7 @@ pub fn plan_symlinks(
                     display_path(&dst),
                     owner,
                     owner,
-                    target_root.display()
+                    target_slug
                 );
             }
             ConflictCheck::UserConflict => {
@@ -139,7 +145,7 @@ pub fn execute_symlinks(plans: &[SymlinkPlan]) -> Result<Vec<SymlinkEntry>> {
 
         created.push(plan.dst.clone());
         entries.push(SymlinkEntry {
-            src: plan.src.to_string_lossy().into_owned(),
+            src: plan.relative_src.clone(),
             dst: display_path(&plan.dst),
         });
     }
