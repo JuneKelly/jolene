@@ -18,8 +18,8 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
 
     out.print(format!("{}", pkg.source));
     out.print(format!("  Source:  {}", pkg.source_kind));
-    if !pkg.clone_url.is_empty() {
-        out.print(format!("  URL:     {}", pkg.clone_url));
+    if let Some(url) = &pkg.clone_url {
+        out.print(format!("  URL:     {}", url));
     }
     out.print(format!("  Branch:  {}", pkg.branch));
     out.print(format!("  Commit:  {}", short));

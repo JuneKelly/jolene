@@ -109,7 +109,7 @@ mod tests {
         PackageState {
             source_kind: "github".to_string(),
             source: source.to_string(),
-            clone_url: format!("https://github.com/{}.git", source),
+            clone_url: Some(format!("https://github.com/{}.git", source)),
             clone_path: format!("repos/{}", source),
             branch: "main".to_string(),
             commit: "abc123".to_string(),

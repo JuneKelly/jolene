@@ -178,7 +178,7 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
             app_state.packages.push(PackageState {
                 source_kind: source.kind().to_string(),
                 source: source.display(),
-                clone_url: source.clone_url(),
+                clone_url: Some(source.clone_url()),
                 clone_path,
                 branch,
                 commit,

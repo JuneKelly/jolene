@@ -20,9 +20,9 @@ pub struct PackageState {
     /// - Url:    the full URL
     pub source: String,
     /// The git URL that was used to clone this package.
-    /// Empty string for pre-existing entries (defaults to deriving from source).
+    /// None for pre-existing entries that pre-date this field.
     #[serde(default)]
-    pub clone_url: String,
+    pub clone_url: Option<String>,
     /// Relative to ~/.jolene/ (e.g. "repos/owner/repo", "repos/local/name")
     pub clone_path: String,
     pub branch: String,
@@ -31,6 +31,16 @@ pub struct PackageState {
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
     pub installations: Vec<Installation>,
+}
+
+impl PackageState {
+    /// The key identifying this package within `~/.jolene/repos/`,
+    /// i.e. `clone_path` with the `"repos/"` prefix stripped.
+    pub fn store_key(&self) -> &str {
+        self.clone_path
+            .strip_prefix("repos/")
+            .unwrap_or(&self.clone_path)
+    }
 }
 
 fn default_source_kind() -> String {

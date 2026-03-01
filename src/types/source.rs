@@ -18,11 +18,19 @@ impl Source {
     pub fn from_github(s: &str) -> Result<Self> {
         let parts: Vec<&str> = s.splitn(2, '/').collect();
         match parts.as_slice() {
-            [owner, repo] if !owner.is_empty() && !repo.is_empty() => Ok(Source::GitHub {
-                owner: owner.to_string(),
-                repo: repo.to_string(),
-            }),
-            _ => bail!("--github expects Owner/repo format, got '{}'", s),
+            [owner, repo] if !owner.is_empty() && !repo.is_empty() => {
+                if s.chars().any(|c| c.is_whitespace()) {
+                    bail!("--github owner/repo must not contain whitespace, got '{}'", s);
+                }
+                if repo.contains('/') {
+                    bail!("--github repo must not contain '/', got '{}'", s);
+                }
+                Ok(Source::GitHub {
+                    owner: owner.to_string(),
+                    repo: repo.to_string(),
+                })
+            }
+            _ => bail!("--github expects owner/repo format, got '{}'", s),
         }
     }
 
@@ -44,13 +52,7 @@ impl Source {
     pub fn store_key(&self) -> String {
         match self {
             Source::GitHub { owner, repo } => format!("{}/{}", owner, repo),
-            Source::Local(path) => {
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "unnamed".to_string());
-                format!("local/{}", name)
-            }
+            Source::Local(path) => format!("local/{}", sanitize_path(path)),
             Source::Url(url) => format!("remote/{}", sanitize_url(url)),
         }
     }
@@ -72,6 +74,26 @@ impl Source {
             Source::Url(_) => "url",
         }
     }
+}
+
+/// Derive a filesystem-safe single-component key from a local path.
+///
+/// Strips the leading `/`, then replaces every character that isn't
+/// alphanumeric, `-`, or `.` with `-`, and collapses consecutive dashes.
+///
+/// Examples:
+/// - `/Users/junebug/my-pkg` → `Users-junebug-my-pkg`
+/// - `/home/alice/tools.git` → `home-alice-tools.git`
+fn sanitize_path(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy();
+    let s = s.strip_prefix('/').unwrap_or(&s);
+    s.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '.' { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 /// Derive a filesystem-safe single-component key from a git URL.
@@ -154,10 +176,19 @@ mod tests {
     }
 
     #[test]
-    fn github_extra_slash_kept_in_repo() {
-        // splitn(2) puts everything after the first slash into repo
-        let s = Source::from_github("a/b/c").unwrap();
-        assert_eq!(s, Source::GitHub { owner: "a".into(), repo: "b/c".into() });
+    fn github_extra_slash_errors() {
+        // A slash in the repo component would break the two-level store key structure.
+        assert!(Source::from_github("a/b/c").is_err());
+    }
+
+    #[test]
+    fn github_whitespace_in_owner_errors() {
+        assert!(Source::from_github("june bug/repo").is_err());
+    }
+
+    #[test]
+    fn github_whitespace_in_repo_errors() {
+        assert!(Source::from_github("owner/my repo").is_err());
     }
 
     // --- Local ---
@@ -165,7 +196,7 @@ mod tests {
     #[test]
     fn local_store_key() {
         let s = Source::Local(PathBuf::from("/Users/junebug/my-pkg"));
-        assert_eq!(s.store_key(), "local/my-pkg");
+        assert_eq!(s.store_key(), "local/Users-junebug-my-pkg");
     }
 
     #[test]
@@ -218,6 +249,25 @@ mod tests {
     fn url_kind() {
         let s = Source::Url("https://example.com/repo.git".to_string());
         assert_eq!(s.kind(), "url");
+    }
+
+    // --- sanitize_path ---
+
+    #[test]
+    fn sanitize_path_full_absolute() {
+        assert_eq!(
+            sanitize_path(&std::path::Path::new("/Users/junebug/my-pkg")),
+            "Users-junebug-my-pkg"
+        );
+    }
+
+    #[test]
+    fn sanitize_path_collapses_dashes() {
+        // Two adjacent separators should collapse to one dash.
+        assert_eq!(
+            sanitize_path(&std::path::Path::new("/home/alice//tools")),
+            "home-alice-tools"
+        );
     }
 
     // --- sanitize_url ---

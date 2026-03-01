@@ -40,7 +40,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let pkg = state::find_package(app_state, source)?
         .ok_or_else(|| anyhow::anyhow!("Package '{}' not found in state.", source))?;
 
-    let store_key = pkg.clone_path.strip_prefix("repos/").unwrap_or(&pkg.clone_path).to_string();
+    let store_key = pkg.store_key().to_owned();
     let installations: Vec<_> = pkg.installations.clone();
     let clone_root = clone_root_for(&pkg.clone_path)?;
 
