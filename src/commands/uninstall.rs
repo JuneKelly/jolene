@@ -87,11 +87,16 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
 
     // 5. Purge clone if requested
     if purge && remove_package {
-        let root = jolene_root()?;
-        let full_clone_path = root.join(&clone_path);
-        if full_clone_path.exists() {
-            std::fs::remove_dir_all(&full_clone_path)?;
-            out.print(format!("  Purged clone at {}", full_clone_path.display()));
+        let clone_still_needed = app_state.packages.iter().any(|p| p.clone_path == clone_path);
+        if clone_still_needed {
+            out.print("  --purge skipped: clone is shared with other installed plugins.");
+        } else {
+            let root = jolene_root()?;
+            let full_clone_path = root.join(&clone_path);
+            if full_clone_path.exists() {
+                std::fs::remove_dir_all(&full_clone_path)?;
+                out.print(format!("  Purged clone at {}", full_clone_path.display()));
+            }
         }
     } else if purge {
         out.print("  --purge skipped: package still installed to other targets.");
