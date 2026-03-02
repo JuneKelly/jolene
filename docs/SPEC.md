@@ -52,6 +52,8 @@ In verbose mode, it prints a notice.
 
 ### jolene install
 
+#### Native mode (default)
+
 ```
 jolene install --github <owner/repo> [--to <target>...]
 jolene install --local  <path>       [--to <target>...]
@@ -72,6 +74,34 @@ Exactly one of `--github`, `--local`, or `--url` is required.
 2. Validate: repo must have `jolene.toml` and at least one content directory.
 3. For each target, create symlinks for all supported content types.
 4. Record installation in the state file.
+
+#### Marketplace mode (`--marketplace`)
+
+```
+jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...]
+```
+
+- `--marketplace` — Treat the source as a Claude Code marketplace repository
+  (expects `.claude-plugin/marketplace.json`).
+- `--pick <name>` — Select plugins from the marketplace catalog. Comma-separated.
+  Required when `--marketplace` is set.
+
+**Process:**
+
+1. Clone (or pull) the marketplace repo.
+2. Parse `.claude-plugin/marketplace.json`.
+3. For each picked plugin, resolve its source:
+   - **Relative** (`./plugins/foo`): content lives within the marketplace clone.
+   - **GitHub** (`{ "source": "github", "repo": "owner/repo" }`): clone independently.
+   - **URL** (`{ "source": "url", "url": "https://..." }`): clone independently.
+   - **npm/pip**: error — not yet supported.
+4. Discover content by scanning `commands/*.md`, `skills/*/SKILL.md`, `agents/*.md`.
+5. Warn if the plugin has hooks, MCP servers, or LSP servers (jolene does not install these).
+6. Create symlinks and record state, same as native mode.
+
+**What jolene ignores from plugins:** Hooks (`hooks/hooks.json`), MCP servers
+(`.mcp.json`), LSP servers (`.lsp.json`), and plugin settings (`settings.json`).
+These are Claude Code-specific features with no equivalent in other targets.
 
 **Example (GitHub):**
 
@@ -102,6 +132,25 @@ Installing /Users/you/projects/my-tools...
     + commands/bar.md -> ~/.claude/commands/bar.md
 
 Installed /Users/you/projects/my-tools to claude-code
+```
+
+**Example (marketplace):**
+
+```
+$ jolene install --marketplace --github acme-corp/tools --pick review-plugin
+Installing from marketplace acme-corp/tools...
+  Cloning https://github.com/acme-corp/tools.git
+  Marketplace: acme-tools
+
+  Plugin: review-plugin
+    Code review skill for PRs
+    Found: 1 skill, 1 command
+
+  Installing to claude-code:
+    + skills/review -> ~/.claude/skills/review
+    + commands/quick-review.md -> ~/.claude/commands/quick-review.md
+
+  Installed plugin 'review-plugin' to claude-code
 ```
 
 ### jolene uninstall
@@ -162,6 +211,51 @@ jolene info <package>
 
 Shows detailed information about an installed package including source URL,
 installed targets, branch, commit, and all content items.
+
+### jolene contents
+
+Browse the contents of a marketplace or installed package before installing.
+
+```
+jolene contents --marketplace --github <org/repo>    # remote marketplace
+jolene contents <installed-package>                   # installed package
+jolene contents --github <owner/repo>                 # remote native package
+```
+
+**Example (marketplace):**
+
+```
+$ jolene contents --marketplace --github acme-corp/tools
+acme-tools
+  Enterprise workflow tools
+  Maintained by: DevTools Team
+
+Available plugins (4):
+
+  review-plugin            Code review skill for PRs
+  deploy-tools             Deployment automation commands
+  security-scanner         Security analysis agent
+  code-formatter           Auto-formatting on save (hooks only — not installable by jolene)
+
+Install with: jolene install --marketplace --github acme-corp/tools --pick <plugin>
+```
+
+Plugins that contain only hooks/MCP/LSP (no commands, skills, or agents) are
+flagged as "not installable by jolene."
+
+**Example (installed package):**
+
+```
+$ jolene contents review-plugin
+acme-corp/tools::review-plugin
+  From marketplace: acme-corp/tools
+  Plugin: review-plugin
+
+  Skills:
+    review
+  Commands:
+    quick-review
+```
 
 ### jolene doctor
 
@@ -258,6 +352,73 @@ All three fields are optional, but at least one must be present and non-empty.
 | `package.urls.repository` | string | Source repository URL.          |
 | `package.urls.homepage`   | string | Project homepage or docs URL.   |
 
+### Marketplace Format (Claude Code Plugin Repos)
+
+Claude Code marketplace repos use `.claude-plugin/marketplace.json` instead of
+`jolene.toml`. Jolene can install content from these repos using `--marketplace`
+mode, without requiring upstream changes.
+
+#### marketplace.json
+
+```json
+{
+  "name": "acme-tools",
+  "owner": { "name": "DevTools Team" },
+  "metadata": { "description": "Enterprise workflow tools" },
+  "plugins": [
+    {
+      "name": "review-plugin",
+      "source": "relative",
+      "path": "./plugins/review-plugin",
+      "description": "Code review skill for PRs"
+    },
+    {
+      "name": "deploy-tools",
+      "source": "github",
+      "repo": "acme-corp/deploy-tools",
+      "description": "Deployment automation commands"
+    },
+    {
+      "name": "scanner",
+      "source": "url",
+      "url": "https://gitlab.com/acme/scanner.git",
+      "description": "Security analysis agent"
+    }
+  ]
+}
+```
+
+#### Plugin source types
+
+| Source       | Resolution                                              |
+|--------------|---------------------------------------------------------|
+| `relative`   | Subdirectory within the marketplace repo. No extra clone. |
+| `github`     | Independent clone into jolene's store (`repos/{hash}/`).  |
+| `url`        | Independent clone into jolene's store (`repos/{hash}/`).  |
+| `npm`, `pip` | Not supported — error with message.                       |
+
+#### Content discovery
+
+Marketplace plugins do not need a `jolene.toml`. Content is discovered by
+scanning the plugin directory:
+
+- `commands/*.md` → Command items
+- `skills/*/SKILL.md` → Skill items (SKILL.md must exist)
+- `agents/*.md` → Agent items
+
+This is the same directory layout used by native jolene packages and by Claude
+Code plugins. The only difference is the discovery mechanism (filesystem scan
+vs. manifest declaration).
+
+#### Ignored features
+
+Jolene installs only commands, skills, and agents. These Claude Code-specific
+features are detected and warned about but not installed:
+
+- Hooks (`hooks/hooks.json` or declared in `plugin.json`)
+- MCP servers (`.mcp.json` or declared in `plugin.json`)
+- LSP servers (`.lsp.json` or declared in `plugin.json`)
+
 ---
 
 ## 3. Local Store
@@ -310,7 +471,7 @@ updated_at   = "2026-02-28T10:00:00Z"
 ```
 
 **Path conventions:**
-- `src` paths are relative to the package clone root.
+- `src` paths are relative to the package clone root (or plugin subdirectory for relative marketplace plugins).
 - `dst` paths use `~` for home directory (expanded at runtime).
 - `clone_path` is relative to `~/.jolene/` and always has the form `repos/{64-char-hex}`.
 
@@ -319,9 +480,25 @@ updated_at   = "2026-02-28T10:00:00Z"
 | Field         | Description                                                    |
 |---------------|----------------------------------------------------------------|
 | `source_kind` | `"github"` \| `"local"` \| `"url"`. Defaults to `"github"` for pre-existing entries. |
-| `source`      | Human-readable identifier: `owner/repo`, absolute path, or URL. Used for display and lookup. |
+| `source`      | Human-readable identifier. For native packages: `owner/repo`, absolute path, or URL. For relative marketplace plugins: `owner/marketplace::plugin-name`. Used for display and lookup. |
 | `clone_url`   | The git URL used to clone the package. Absent for pre-existing entries. |
 | `clone_path`  | `repos/{64-char-hex}` — relative to `~/.jolene/`. The hex is the SHA256 store key. |
+
+**Marketplace provenance fields** (optional, present only for marketplace-sourced packages):
+
+| Field         | Description                                                    |
+|---------------|----------------------------------------------------------------|
+| `marketplace` | The marketplace source identifier (e.g. `"acme-corp/tools"`). |
+| `plugin_name` | The plugin name within the marketplace (e.g. `"review-plugin"`). Enables short-name lookup: `jolene update review-plugin`. |
+| `plugin_path` | For relative plugins, the subdirectory within the clone where content lives (e.g. `"plugins/review-plugin"`). Absent for external plugins. |
+
+**Store key for marketplace plugins:**
+- **Relative-path plugins** share the marketplace repo's store key. Multiple
+  relative plugins from the same marketplace share one clone directory but get
+  distinct `PackageState` entries (distinguished by `source` which includes the
+  `::plugin-name` suffix).
+- **External-source plugins** (GitHub/URL) get their own store key and clone,
+  just like any other jolene package. The marketplace merely told us about them.
 
 **Store key:** Each package is identified by the SHA256 hex digest of its canonical key string:
 - GitHub: SHA256 of `github||owner/repo`
@@ -330,6 +507,30 @@ updated_at   = "2026-02-28T10:00:00Z"
 
 The 64-character hex digest is used as the directory name under `repos/`.
 `state.toml` is the authoritative mapping from hash to human-readable source.
+
+**Example (marketplace-sourced relative plugin):**
+
+```toml
+[[packages]]
+source_kind  = "github"
+source       = "acme-corp/tools::review-plugin"
+clone_url    = "https://github.com/acme-corp/tools.git"
+clone_path   = "repos/b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7"
+branch       = "main"
+commit       = "fed9876abc1234"
+installed_at = "2026-03-02T10:00:00Z"
+updated_at   = "2026-03-02T10:00:00Z"
+marketplace  = "acme-corp/tools"
+plugin_name  = "review-plugin"
+plugin_path  = "plugins/review-plugin"
+
+  [[packages.installations]]
+  target = "claude-code"
+  symlinks = [
+    { src = "skills/review", dst = "~/.claude/skills/review" },
+    { src = "commands/quick-review.md", dst = "~/.claude/commands/quick-review.md" },
+  ]
+```
 
 **Atomicity:** The state file is written to a temp file then renamed,
 preventing corruption on interruption.
@@ -389,6 +590,54 @@ preventing corruption on interruption.
 8. RECORD STATE
    Write updated state.toml (atomic write).
 ```
+
+### Marketplace Install: Step by Step
+
+```
+1. RESOLVE SOURCE
+   Same as native mode: --github, --local, or --url.
+
+2. FETCH MARKETPLACE
+   Clone (or pull) the marketplace repo into the store.
+
+3. PARSE CATALOG
+   Read .claude-plugin/marketplace.json. Error if missing.
+   Validate that --pick names exist in the catalog.
+
+4. FOR EACH PICKED PLUGIN:
+
+   4a. RESOLVE PLUGIN SOURCE
+       - Relative: resolve to subdirectory within the marketplace clone.
+       - GitHub/URL: clone independently into its own store directory.
+       - npm/pip: error (not supported).
+
+   4b. DETECT IGNORED FEATURES
+       Check for hooks.json, .mcp.json, .lsp.json.
+       Warn user if present.
+
+   4c. DISCOVER CONTENT
+       Scan plugin directory for commands/*.md, skills/*/SKILL.md, agents/*.md.
+       Skip plugin if no installable content found.
+
+   4d. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
+       Same as native install (steps 4-7 above).
+
+   4e. RECORD STATE
+       Store with marketplace provenance fields.
+       Relative plugins use composite source: "org/marketplace::plugin-name".
+       External plugins use their own source identity.
+```
+
+### Package Name Lookup
+
+Packages can be referenced by short name in `uninstall`, `update`, `info`,
+and `contents` commands:
+
+- **Native packages:** `"tools"` matches `"alice/tools"` (the repo component).
+- **Marketplace plugins:** `"review-plugin"` matches any package with
+  `plugin_name = "review-plugin"`.
+- If multiple packages match a short name, jolene errors with "Ambiguous name"
+  and lists the matches.
 
 ### Rollback
 
@@ -583,6 +832,33 @@ Error: Ambiguous name 'review-tools'. Multiple matches:
   Use the full Author/repo format.
 ```
 
+### Missing Marketplace Manifest
+
+```
+Error: No .claude-plugin/marketplace.json found in acme-corp/tools
+  Are you sure this is a marketplace repo?
+```
+
+### Missing --pick Flag
+
+```
+Error: --pick is required with --marketplace
+  Use `jolene contents --marketplace --github acme-corp/tools` to see available plugins
+```
+
+### Plugin Not Found in Marketplace
+
+```
+Error: Plugin 'nonexistent' not found in marketplace.
+  Available: review-plugin, deploy-tools, security-scanner
+```
+
+### Unsupported Plugin Source
+
+```
+Error: Plugin 'npm-thing' uses an unsupported source type (npm/pip are not yet supported by jolene)
+```
+
 ### Partial Failure Rollback
 
 If symlink creation fails partway through, all symlinks created during
@@ -627,6 +903,12 @@ Packages that depend on other packages. Requires a solver and lock file.
 
 Authenticated git clones for private repos. For MVP, jolene inherits
 whatever git credentials are configured on the system.
+
+### Git Ref Support for Marketplace Plugins
+
+Marketplace plugins can declare a `ref` field (tag or branch). Jolene currently
+ignores this and tracks HEAD. Future work: checkout the specified ref after
+cloning, and respect it during updates.
 
 ### Windows Support
 

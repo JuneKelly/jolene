@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 
 use crate::config::clone_root_for;
+use crate::discovery;
 use crate::git;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink, SymlinkPlan};
+use crate::types::content::ContentItem;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
@@ -44,6 +46,8 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     let store_key = pkg.store_key().to_owned();
     let installations: Vec<_> = pkg.installations.clone();
+    let is_marketplace = pkg.marketplace.is_some();
+    let plugin_path = pkg.plugin_path.clone();
     let clone_root = clone_root_for(&pkg.clone_path)?;
 
     let display_names: HashMap<String, String> = app_state
@@ -62,10 +66,34 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         return Ok(());
     }
 
-    // 2. Validate updated manifest.
-    let manifest = load_manifest(&clone_root)?;
-    validate_manifest(&manifest, &clone_root)?;
-    let items = collect_content_items(&manifest);
+    // 2. Collect content — marketplace uses discovery, native uses manifest.
+    //    Relative marketplace plugins have a subdirectory within the clone.
+    let content_dir = match &plugin_path {
+        Some(subdir) => {
+            let dir = clone_root.join(subdir);
+            let dir = dir.canonicalize().with_context(|| {
+                format!("Failed to resolve plugin path '{}'", subdir)
+            })?;
+            let root = clone_root.canonicalize().with_context(|| {
+                "Failed to canonicalize clone root".to_string()
+            })?;
+            if !dir.starts_with(&root) {
+                bail!(
+                    "Plugin path '{}' escapes the clone directory — refusing to update",
+                    subdir
+                );
+            }
+            dir
+        }
+        None => clone_root.clone(),
+    };
+    let items: Vec<ContentItem> = if is_marketplace {
+        discovery::discover_content(&content_dir)?
+    } else {
+        let manifest = load_manifest(&clone_root)?;
+        validate_manifest(&manifest, &clone_root)?;
+        collect_content_items(&manifest)
+    };
 
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
@@ -122,7 +150,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
         let plans = plan_symlinks(
             &new_items,
-            &clone_root,
+            &content_dir,
             &target_root,
             inst.target.as_str(),
             &store_key,

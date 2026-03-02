@@ -7,6 +7,10 @@ of your AI coding tools — Claude Code, OpenCode, and Codex. Packages are clone
 locally and content is installed via symlinks, so a single `jolene update` pulls
 the latest from every package you have installed.
 
+Jolene also works with **Claude Code marketplace repos** — install individual
+plugins from existing `.claude-plugin/marketplace.json` catalogs without
+requiring upstream changes. Multi-target, symlink-based, CLI-first.
+
 ---
 
 ## Installation
@@ -42,6 +46,59 @@ Installing JuneKelly/co-review...
     + commands/co-review.md -> ~/.claude/commands/co-review.md
 
 Installed JuneKelly/co-review to claude-code
+```
+
+### Install from a Claude Code marketplace
+
+```sh
+jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...]
+```
+
+Install individual plugins from a Claude Code marketplace repo. The repo must
+contain `.claude-plugin/marketplace.json`. Use `jolene contents` to browse
+available plugins first.
+
+```
+$ jolene install --marketplace --github acme-corp/tools --pick review-plugin
+Installing from marketplace acme-corp/tools...
+  Cloning https://github.com/acme-corp/tools.git
+  Marketplace: acme-tools
+
+  Plugin: review-plugin
+    Code review skill for PRs
+    Found: 1 skill, 1 command
+
+  Installing to claude-code:
+    + skills/review -> ~/.claude/skills/review
+    + commands/quick-review.md -> ~/.claude/commands/quick-review.md
+
+  Installed plugin 'review-plugin' to claude-code
+```
+
+Jolene installs commands, skills, and agents from plugins. Hooks, MCP servers,
+and LSP servers are Claude Code-specific and are skipped with a warning.
+
+### Browse contents
+
+```sh
+jolene contents --marketplace --github <org/repo>    # browse a marketplace
+jolene contents <installed-package>                   # inspect an installed package
+jolene contents --github <owner/repo>                 # inspect a native package
+```
+
+```
+$ jolene contents --marketplace --github acme-corp/tools
+acme-tools
+  Enterprise workflow tools
+  Maintained by: DevTools Team
+
+Available plugins (3):
+
+  review-plugin            Code review skill for PRs
+  deploy-tools             Deployment automation commands
+  security-scanner         Security analysis agent
+
+Install with: jolene install --marketplace --github acme-corp/tools --pick <plugin>
 ```
 
 ### List installed packages
@@ -110,6 +167,8 @@ Targets are auto-detected by checking whether their config root exists. Use
 
 ## Package Format
 
+### Native packages
+
 A jolene package is a git repository with a `jolene.toml` manifest and
 content in conventional directories.
 
@@ -159,6 +218,16 @@ non-empty.
 | Agents       | yes         | yes      | —     |
 
 Unsupported content types are silently skipped (visible with `--verbose`).
+
+### Marketplace packages
+
+Claude Code marketplace repos use `.claude-plugin/marketplace.json` to catalog
+plugins. Each plugin has its own directory with the same `commands/`, `skills/`,
+`agents/` layout. Jolene discovers content by scanning the filesystem — no
+`jolene.toml` needed in plugin directories.
+
+Plugins can live inside the marketplace repo (relative source) or in their own
+repos (GitHub/URL source). See `docs/SPEC.md` for the full marketplace format.
 
 ---
 

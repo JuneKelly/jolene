@@ -17,9 +17,15 @@ Quick start:
   Update all:           jolene update
   Uninstall:            jolene uninstall owner/repo
 
+Marketplace (Claude Code plugin repos):
+
+  Browse plugins:       jolene contents --marketplace --github org/tools
+  Install a plugin:     jolene install --marketplace --github org/tools --pick review
+
 A package is a git repo with a jolene.toml manifest containing
 commands/, skills/, and/or agents/ that get symlinked into your
-coding tool's config directory.
+coding tool's config directory. Marketplace repos use
+.claude-plugin/marketplace.json instead.
 
 Supported targets:
 
@@ -81,6 +87,9 @@ pub enum Command {
         package: String,
     },
 
+    /// Browse contents of a marketplace or installed package
+    Contents(ContentsArgs),
+
     /// Verify health of all installations
     Doctor,
 }
@@ -110,4 +119,42 @@ pub struct InstallArgs {
     /// Target(s) to install to (repeatable). Defaults to all detected targets.
     #[arg(long = "to", value_name = "TARGET")]
     pub to: Vec<String>,
+
+    /// Treat the source as a Claude Code marketplace repository
+    #[arg(long)]
+    pub marketplace: bool,
+
+    /// Select specific plugins from a marketplace catalog (comma-separated)
+    #[arg(long, value_name = "NAME", value_delimiter = ',')]
+    pub pick: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+#[command(
+    about = "Browse contents of a marketplace or installed package",
+    group(
+        ArgGroup::new("contents_source")
+            .args(["github", "local", "url", "package"])
+    )
+)]
+pub struct ContentsArgs {
+    /// GitHub repository in Owner/repo format
+    #[arg(long, value_name = "OWNER/REPO")]
+    pub github: Option<String>,
+
+    /// Local git repository path
+    #[arg(long, value_name = "PATH")]
+    pub local: Option<PathBuf>,
+
+    /// Remote git URL
+    #[arg(long, value_name = "URL")]
+    pub url: Option<String>,
+
+    /// Name of an installed package
+    #[arg(value_name = "PACKAGE")]
+    pub package: Option<String>,
+
+    /// Treat the source as a Claude Code marketplace repository
+    #[arg(long)]
+    pub marketplace: bool,
 }

@@ -1,7 +1,9 @@
 mod cli;
 mod commands;
 mod config;
+mod discovery;
 mod git;
+mod marketplace;
 mod output;
 mod state;
 mod symlink;
@@ -27,6 +29,7 @@ fn main() {
         Command::List { target } => commands::list::run(target.as_deref(), &out),
         Command::Update { package } => commands::update::run(package.as_deref(), &out),
         Command::Info { package } => commands::info::run(package, &out),
+        Command::Contents(args) => commands::contents::run(args, &out),
         Command::Doctor => commands::doctor::run(&out),
     };
 

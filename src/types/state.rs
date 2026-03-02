@@ -53,6 +53,16 @@ pub struct PackageState {
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
     pub installations: Vec<Installation>,
+    /// When this package came from a marketplace, the marketplace source identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marketplace: Option<String>,
+    /// When this package came from a marketplace, the plugin name within it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_name: Option<String>,
+    /// For relative marketplace plugins, the subdirectory within the clone
+    /// where the plugin content lives (e.g. "plugins/review-plugin").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_path: Option<String>,
 }
 
 impl PackageState {
