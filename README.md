@@ -33,17 +33,15 @@ omitted, jolene installs to every target whose config directory exists on
 your system.
 
 ```
-$ jolene install --github junebug/review-tools --to opencode
-Installing junebug/review-tools...
-  Cloning https://github.com/junebug/review-tools.git
-  Found: 1 command, 2 skills
+$ jolene install --github JuneKelly/co-review --to claude-code
+Installing JuneKelly/co-review...
+  Cloning https://github.com/JuneKelly/co-review.git
+  Found: 1 command
 
-  Installing to opencode:
-    + commands/review.md -> ~/.config/opencode/commands/review.md
-    + skills/code-analysis/ -> ~/.config/opencode/skills/code-analysis/
-    + skills/style-check/ -> ~/.config/opencode/skills/style-check/
+  Installing to claude-code:
+    + commands/co-review.md -> ~/.claude/commands/co-review.md
 
-Installed junebug/review-tools to opencode
+Installed JuneKelly/co-review to claude-code
 ```
 
 ### List installed packages
@@ -55,7 +53,7 @@ jolene list [--target <target>]
 ```
 Installed packages:
 
-  junebug/review-tools
+  JuneKelly/co-review
     Source:  github
     Targets: opencode, claude-code
     Content: 1 command, 2 skills
