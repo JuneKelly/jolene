@@ -7,7 +7,28 @@ use clap::{ArgGroup, Args, Parser, Subcommand};
     name = "jolene",
     version,
     about = "A package manager for coding agent commands, skills, and agents.",
-    after_help = "Supported targets:\n\n  claude-code   ~/.claude/\n  opencode      ~/.config/opencode/\n  codex         ~/.codex/\n\nTargets are auto-detected by checking whether their config directory exists.\nUse --to / --from to specify targets explicitly."
+    after_help = "\
+Quick start:
+
+  Install from GitHub:  jolene install --github owner/repo
+  Install from URL:     jolene install --url https://example.com/repo.git
+  Install from path:    jolene install --local /path/to/package
+  List installed:       jolene list
+  Update all:           jolene update
+  Uninstall:            jolene uninstall owner/repo
+
+A package is a git repo with a jolene.toml manifest containing
+commands/, skills/, and/or agents/ that get symlinked into your
+coding tool's config directory.
+
+Supported targets:
+
+  claude-code   ~/.claude/
+  opencode      ~/.config/opencode/
+  codex         ~/.codex/
+
+Targets are auto-detected by checking whether their config directory exists.
+Use --to / --from to specify targets explicitly."
 )]
 pub struct Cli {
     /// Print detailed output
