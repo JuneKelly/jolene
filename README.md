@@ -239,3 +239,15 @@ repos (GitHub/URL source). See `docs/SPEC.md` for the full marketplace format.
 -V, --version    Print version
 -h, --help       Print help
 ```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOLENE_ROOT` | `~/.jolene/` | Override the jolene data directory (store, state file). |
+| `JOLENE_EFFECTIVE_HOME` | `$HOME` | Override the home directory used for target config paths (`~/.claude/`, etc.) and `~/...` display/expansion. |
+
+These are primarily useful for integration testing — point both variables at
+temp directories to run jolene without touching real config files.

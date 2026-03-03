@@ -425,6 +425,17 @@ features are detected and warned about but not installed:
 
 All jolene data lives under `~/.jolene/`.
 
+### Environment Variable Overrides
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JOLENE_ROOT` | `~/.jolene/` | Override the jolene data directory (store and state file). When set, jolene uses this path directly instead of `~/.jolene/`. |
+| `JOLENE_EFFECTIVE_HOME` | `$HOME` | Override the home directory used for resolving target config roots (`~/.claude/`, `~/.config/opencode/`, `~/.codex/`) and for `~/...` path display and expansion. |
+
+Both variables are intended for integration testing — point them at temp
+directories to run the full install/list/uninstall cycle without touching
+real config files. In normal usage, neither needs to be set.
+
 ### Directory Layout
 
 ```
