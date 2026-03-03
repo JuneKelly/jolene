@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use chrono::Utc;
 
 use crate::config::clone_root_for;
@@ -68,25 +68,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 2. Collect content — marketplace uses discovery, native uses manifest.
     //    Relative marketplace plugins have a subdirectory within the clone.
-    let content_dir = match &plugin_path {
-        Some(subdir) => {
-            let dir = clone_root.join(subdir);
-            let dir = dir.canonicalize().with_context(|| {
-                format!("Failed to resolve plugin path '{}'", subdir)
-            })?;
-            let root = clone_root.canonicalize().with_context(|| {
-                "Failed to canonicalize clone root".to_string()
-            })?;
-            if !dir.starts_with(&root) {
-                bail!(
-                    "Plugin path '{}' escapes the clone directory — refusing to update",
-                    subdir
-                );
-            }
-            dir
-        }
-        None => clone_root.clone(),
-    };
+    let content_dir = discovery::resolve_plugin_dir(&clone_root, plugin_path.as_deref())?;
     let items: Vec<ContentItem> = if is_marketplace {
         discovery::discover_content(&content_dir)?
     } else {

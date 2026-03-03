@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 
 use crate::types::content::{ContentItem, ContentType};
 
@@ -64,6 +64,42 @@ pub fn discover_content(plugin_dir: &Path) -> Result<Vec<ContentItem>> {
     });
 
     Ok(items)
+}
+
+/// Resolve a plugin subdirectory within a clone root, with path traversal protection.
+///
+/// If `plugin_path` is `Some`, joins it to `clone_root`, canonicalizes both paths,
+/// and verifies the result stays within the clone root. Returns the clone root itself
+/// if `plugin_path` is `None`.
+pub fn resolve_plugin_dir(clone_root: &Path, plugin_path: Option<&str>) -> Result<PathBuf> {
+    match plugin_path {
+        Some(subdir) => {
+            let dir = clone_root.join(subdir);
+            let dir = dir
+                .canonicalize()
+                .with_context(|| format!("Failed to resolve plugin path '{}'", subdir))?;
+            let root = clone_root
+                .canonicalize()
+                .with_context(|| "Failed to canonicalize clone root".to_string())?;
+            if !dir.starts_with(&root) {
+                bail!("Plugin path '{}' escapes the clone directory", subdir);
+            }
+            Ok(dir)
+        }
+        None => Ok(clone_root.to_path_buf()),
+    }
+}
+
+/// Like `resolve_plugin_dir` but returns `None` instead of erroring on failure.
+/// Useful for display-only contexts where a missing or invalid path is not fatal.
+pub fn resolve_plugin_dir_lossy(clone_root: &Path, subdir: &str) -> Option<PathBuf> {
+    let cleaned = subdir.strip_prefix("./").unwrap_or(subdir);
+    let dir = clone_root.join(cleaned).canonicalize().ok()?;
+    let root = clone_root.canonicalize().ok()?;
+    if !dir.starts_with(&root) {
+        return None;
+    }
+    Some(dir)
 }
 
 /// Human-readable summary of discovered content, e.g. "2 commands, 1 skill".

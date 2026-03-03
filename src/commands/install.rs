@@ -316,19 +316,13 @@ fn resolve_plugin_source(
                     path
                 );
             }
-            let plugin_dir = plugin_dir.canonicalize().with_context(|| {
-                format!("Failed to resolve plugin path '{}'", path)
-            })?;
-            let mp_root_canonical = mp_clone_root.canonicalize().with_context(|| {
-                format!("Failed to canonicalize marketplace root")
-            })?;
-            if !plugin_dir.starts_with(&mp_root_canonical) {
-                bail!(
-                    "Plugin '{}' path '{}' escapes the marketplace repository",
-                    plugin_name,
-                    path
-                );
-            }
+            let plugin_dir = discovery::resolve_plugin_dir(mp_clone_root, Some(cleaned))
+                .with_context(|| {
+                    format!(
+                        "Plugin '{}' path '{}' escapes the marketplace repository",
+                        plugin_name, path
+                    )
+                })?;
             // Relative plugins live inside the marketplace clone.
             // Use a composite display name so each gets a distinct PackageState entry.
             let display_name = format!("{}::{}", mp_source.display(), plugin_name);

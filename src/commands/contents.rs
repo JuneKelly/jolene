@@ -157,25 +157,8 @@ fn show_installed_package(pkg_name: &str, out: &Output) -> Result<()> {
         if pkg.marketplace.is_some() {
             // For marketplace plugins, resolve the content directory.
             // Relative plugins have a plugin_path subdirectory within the clone.
-            let content_dir = match &pkg.plugin_path {
-                Some(subdir) => {
-                    let dir = clone_root.join(subdir);
-                    let dir = dir.canonicalize().with_context(|| {
-                        format!("Failed to resolve plugin path '{}'", subdir)
-                    })?;
-                    let root = clone_root.canonicalize().with_context(|| {
-                        "Failed to canonicalize clone root".to_string()
-                    })?;
-                    if !dir.starts_with(&root) {
-                        bail!(
-                            "Plugin path '{}' escapes the clone directory",
-                            subdir
-                        );
-                    }
-                    dir
-                }
-                None => clone_root.clone(),
-            };
+            let content_dir =
+                discovery::resolve_plugin_dir(&clone_root, pkg.plugin_path.as_deref())?;
             let items = discovery::discover_content(&content_dir)?;
             print_content_list(&items, out);
         } else {
@@ -232,15 +215,7 @@ fn resolve_plugin_dir_for_display(
 ) -> Option<std::path::PathBuf> {
     match ps {
         marketplace::PluginSource::Relative { path } => {
-            let cleaned = path.strip_prefix("./").unwrap_or(path);
-            let dir = mp_clone_root.join(cleaned);
-            // Canonicalize both paths and verify the plugin stays within the clone root.
-            let dir = dir.canonicalize().ok()?;
-            let root = mp_clone_root.canonicalize().ok()?;
-            if !dir.starts_with(&root) {
-                return None;
-            }
-            Some(dir)
+            discovery::resolve_plugin_dir_lossy(mp_clone_root, path)
         }
         _ => None,
     }
