@@ -23,10 +23,8 @@ pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
             .canonicalize()
             .with_context(|| format!("Cannot access local path: {}", path.display()))?;
         Some(Source::Local(abs))
-    } else if let Some(ref url) = args.url {
-        Some(Source::Url(url.clone()))
     } else {
-        None
+        args.url.as_ref().map(|url| Source::Url(url.clone()))
     };
 
     let Some(source) = source else {
@@ -66,16 +64,16 @@ fn show_marketplace(
     let mp = marketplace::load_marketplace(clone_root)?;
 
     // Header
-    out.print(format!("{}", mp.name));
-    if let Some(ref meta) = mp.metadata {
-        if let Some(ref desc) = meta.description {
-            out.print(format!("  {}", desc));
-        }
+    out.print(mp.name.to_string());
+    if let Some(ref meta) = mp.metadata
+        && let Some(ref desc) = meta.description
+    {
+        out.print(format!("  {}", desc));
     }
-    if let Some(ref owner) = mp.owner {
-        if let Some(ref name) = owner.name {
-            out.print(format!("  Maintained by: {}", name));
-        }
+    if let Some(ref owner) = mp.owner
+        && let Some(ref name) = owner.name
+    {
+        out.print(format!("  Maintained by: {}", name));
     }
 
     out.print(format!("\nAvailable plugins ({}):\n", mp.plugins.len()));
@@ -143,7 +141,7 @@ fn show_installed_package(pkg_name: &str, out: &Output) -> Result<()> {
     let pkg = state::find_package(&app_state, pkg_name)?
         .ok_or_else(|| anyhow::anyhow!("Package '{}' is not installed.", pkg_name))?;
 
-    out.print(format!("{}", pkg.source));
+    out.print(pkg.source.to_string());
     if let Some(ref mp) = pkg.marketplace {
         out.print(format!("  From marketplace: {}", mp));
     }

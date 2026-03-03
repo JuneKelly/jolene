@@ -19,10 +19,11 @@ pub fn discover_content(plugin_dir: &Path) -> Result<Vec<ContentItem>> {
         for entry in std::fs::read_dir(&commands_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|e| e == "md") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    items.push(ContentItem::new(ContentType::Command, stem));
-                }
+            if path.is_file()
+                && path.extension().is_some_and(|e| e == "md")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                items.push(ContentItem::new(ContentType::Command, stem));
             }
         }
     }
@@ -33,10 +34,11 @@ pub fn discover_content(plugin_dir: &Path) -> Result<Vec<ContentItem>> {
         for entry in std::fs::read_dir(&skills_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_dir() && path.join("SKILL.md").exists() {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    items.push(ContentItem::new(ContentType::Skill, name));
-                }
+            if path.is_dir()
+                && path.join("SKILL.md").exists()
+                && let Some(name) = path.file_name().and_then(|s| s.to_str())
+            {
+                items.push(ContentItem::new(ContentType::Skill, name));
             }
         }
     }
@@ -47,10 +49,11 @@ pub fn discover_content(plugin_dir: &Path) -> Result<Vec<ContentItem>> {
         for entry in std::fs::read_dir(&agents_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() && path.extension().is_some_and(|e| e == "md") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    items.push(ContentItem::new(ContentType::Agent, stem));
-                }
+            if path.is_file()
+                && path.extension().is_some_and(|e| e == "md")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                items.push(ContentItem::new(ContentType::Agent, stem));
             }
         }
     }
