@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use dirs::home_dir;
 
 /// Return the effective home directory, checking `JOLENE_EFFECTIVE_HOME` first.
+#[allow(clippy::disallowed_methods)]
 pub fn effective_home() -> Option<PathBuf> {
     if let Ok(val) = std::env::var("JOLENE_EFFECTIVE_HOME") {
         if !val.is_empty() {
