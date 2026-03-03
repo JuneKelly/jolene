@@ -26,36 +26,91 @@ pub struct MarketplaceMetadata {
 }
 
 /// A single plugin listed in the marketplace catalog.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct PluginEntry {
     pub name: String,
-    #[serde(flatten)]
     pub source: PluginSource,
     pub description: Option<String>,
     pub version: Option<String>,
 }
 
+/// Raw intermediate used only for deserialization of `PluginEntry`.
+/// Supports both the tagged format (`"source": "relative", "path": "..."`)
+/// and the path-as-source shorthand (`"source": "./plugins/my-plugin"`).
+#[derive(Deserialize)]
+struct RawPluginEntry {
+    name: String,
+    source: String,
+    path: Option<String>,
+    repo: Option<String>,
+    url: Option<String>,
+    #[serde(rename = "ref")]
+    git_ref: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for PluginEntry {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawPluginEntry::deserialize(deserializer)?;
+        let source = match raw.source.as_str() {
+            "relative" => {
+                let path = raw
+                    .path
+                    .ok_or_else(|| serde::de::Error::missing_field("path"))?;
+                PluginSource::Relative { path }
+            }
+            "github" => {
+                let repo = raw
+                    .repo
+                    .ok_or_else(|| serde::de::Error::missing_field("repo"))?;
+                PluginSource::GitHub {
+                    repo,
+                    git_ref: raw.git_ref,
+                }
+            }
+            "url" => {
+                let url = raw
+                    .url
+                    .ok_or_else(|| serde::de::Error::missing_field("url"))?;
+                PluginSource::Url {
+                    url,
+                    git_ref: raw.git_ref,
+                }
+            }
+            s if s.starts_with("./") || s.starts_with("../") => {
+                PluginSource::Relative {
+                    path: s.to_string(),
+                }
+            }
+            _ => PluginSource::Unsupported,
+        };
+        Ok(PluginEntry {
+            name: raw.name,
+            source,
+            description: raw.description,
+            version: raw.version,
+        })
+    }
+}
+
 /// How the plugin's code is located.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "source")]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum PluginSource {
-    #[serde(rename = "relative")]
     Relative { path: String },
-    #[serde(rename = "github")]
     GitHub {
         repo: String,
-        #[serde(rename = "ref")]
         git_ref: Option<String>,
     },
-    #[serde(rename = "url")]
     Url {
         url: String,
-        #[serde(rename = "ref")]
         git_ref: Option<String>,
     },
-    #[serde(other)]
     Unsupported,
 }
 
@@ -212,6 +267,29 @@ mod tests {
         let mp: Marketplace = serde_json::from_str(json).unwrap();
         assert_eq!(mp.plugins.len(), 1);
         assert!(matches!(mp.plugins[0].source, PluginSource::Url { .. }));
+    }
+
+    #[test]
+    fn parse_marketplace_with_path_as_source() {
+        let json = r#"{
+            "name": "sona-marketplace",
+            "plugins": [
+                {
+                    "name": "walkthrough",
+                    "source": "./plugins/skills/walkthrough",
+                    "description": "Generate an interactive HTML walkthrough"
+                }
+            ]
+        }"#;
+        let mp: Marketplace = serde_json::from_str(json).unwrap();
+        assert_eq!(mp.plugins.len(), 1);
+        assert_eq!(mp.plugins[0].name, "walkthrough");
+        match &mp.plugins[0].source {
+            PluginSource::Relative { path } => {
+                assert_eq!(path, "./plugins/skills/walkthrough");
+            }
+            other => panic!("Expected Relative, got {:?}", other),
+        }
     }
 
     #[test]
