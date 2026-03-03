@@ -15,6 +15,11 @@ requiring upstream changes. Multi-target, symlink-based, CLI-first.
 
 ## Installation
 
+Pre-built binaries are available on the [GitHub releases page](https://github.com/JuneKelly/jolene/releases).
+Download the binary for your platform, make it executable, and place it somewhere on your `PATH`.
+
+Alternatively, build from source with Cargo:
+
 ```sh
 cargo install --path .
 ```
