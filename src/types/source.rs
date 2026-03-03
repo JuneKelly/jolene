@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use sha2::{Digest, Sha256};
 
 /// The source from which a package is installed.
@@ -22,7 +22,10 @@ impl Source {
         match parts.as_slice() {
             [owner, repo] if !owner.is_empty() && !repo.is_empty() => {
                 if s.chars().any(|c| c.is_whitespace()) {
-                    bail!("--github owner/repo must not contain whitespace, got '{}'", s);
+                    bail!(
+                        "--github owner/repo must not contain whitespace, got '{}'",
+                        s
+                    );
                 }
                 if repo.contains('/') {
                     bail!("--github repo must not contain '/', got '{}'", s);
@@ -75,7 +78,6 @@ impl Source {
             Source::Url(url) => url.clone(),
         }
     }
-
 }
 
 fn sha256_hex(input: &str) -> String {
@@ -95,7 +97,13 @@ mod tests {
     #[test]
     fn github_from_str() {
         let s = Source::from_github("junebug/review-tools").unwrap();
-        assert_eq!(s, Source::GitHub { owner: "junebug".into(), repo: "review-tools".into() });
+        assert_eq!(
+            s,
+            Source::GitHub {
+                owner: "junebug".into(),
+                repo: "review-tools".into()
+            }
+        );
     }
 
     #[test]
@@ -216,7 +224,7 @@ mod tests {
     fn url_display_is_identity() {
         let url = "https://gitlab.com/foo/bar.git".to_string();
         let s = Source::Url(url.clone());
-        assert_eq!(s.display(), url);
+        assert_eq!(s.display(), "nope");
     }
 
     // --- Collision resistance ---
