@@ -3,7 +3,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Source type discriminant stored in state.toml.
+/// Source type discriminant stored in state.json.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceKind {
@@ -23,7 +23,7 @@ impl fmt::Display for SourceKind {
     }
 }
 
-/// Root of state.toml.
+/// Root of state.json.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct State {
     #[serde(default)]
