@@ -67,7 +67,7 @@ impl Source {
         sha256_hex(&self.canonical_key())
     }
 
-    /// Human-readable display string, stored as `source` in state.toml.
+    /// Human-readable display string, stored as `source` in state.json.
     pub fn display(&self) -> String {
         match self {
             Source::GitHub { owner, repo } => format!("{}/{}", owner, repo),

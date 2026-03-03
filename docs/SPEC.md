@@ -429,45 +429,53 @@ All jolene data lives under `~/.jolene/`.
 
 ```
 ~/.jolene/
-  state.toml                        # installation state
+  state.json                        # installation state
   repos/                            # cloned repositories
     a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/  # git clone
     b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7/  # git clone
 ```
 
 Each directory under `repos/` is named with the SHA256 of the package's canonical key
-(see Store key below). `state.toml` is the authoritative mapping from hash to source.
+(see Store key below). `state.json` is the authoritative mapping from hash to source.
 
-### State File: state.toml
+### State File: state.json
 
-Tracks installed packages and their symlinks.
+Tracks installed packages and their symlinks. JSON is used because the state
+file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
-```toml
-[[packages]]
-source_kind  = "github"
-source       = "junebug/review-tools"
-clone_url    = "https://github.com/junebug/review-tools.git"
-clone_path   = "repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8"
-branch      = "main"
-commit      = "abc1234def5678"
-installed_at = "2026-02-28T10:00:00Z"
-updated_at   = "2026-02-28T10:00:00Z"
-
-  [[packages.installations]]
-  target = "opencode"
-  symlinks = [
-    { src = "commands/review.md", dst = "~/.config/opencode/commands/review.md" },
-    { src = "skills/code-analysis", dst = "~/.config/opencode/skills/code-analysis" },
-    { src = "skills/style-check", dst = "~/.config/opencode/skills/style-check" },
+```json
+{
+  "packages": [
+    {
+      "source_kind": "github",
+      "source": "junebug/review-tools",
+      "clone_url": "https://github.com/junebug/review-tools.git",
+      "clone_path": "repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8",
+      "branch": "main",
+      "commit": "abc1234def5678",
+      "installed_at": "2026-02-28T10:00:00Z",
+      "updated_at": "2026-02-28T10:00:00Z",
+      "installations": [
+        {
+          "target": "opencode",
+          "symlinks": [
+            { "src": "commands/review.md", "dst": "~/.config/opencode/commands/review.md" },
+            { "src": "skills/code-analysis", "dst": "~/.config/opencode/skills/code-analysis" },
+            { "src": "skills/style-check", "dst": "~/.config/opencode/skills/style-check" }
+          ]
+        },
+        {
+          "target": "claude-code",
+          "symlinks": [
+            { "src": "commands/review.md", "dst": "~/.claude/commands/review.md" },
+            { "src": "skills/code-analysis", "dst": "~/.claude/skills/code-analysis" },
+            { "src": "skills/style-check", "dst": "~/.claude/skills/style-check" }
+          ]
+        }
+      ]
+    }
   ]
-
-  [[packages.installations]]
-  target = "claude-code"
-  symlinks = [
-    { src = "commands/review.md", dst = "~/.claude/commands/review.md" },
-    { src = "skills/code-analysis", dst = "~/.claude/skills/code-analysis" },
-    { src = "skills/style-check", dst = "~/.claude/skills/style-check" },
-  ]
+}
 ```
 
 **Path conventions:**
@@ -506,30 +514,37 @@ updated_at   = "2026-02-28T10:00:00Z"
 - URL:    SHA256 of `url||https://...`
 
 The 64-character hex digest is used as the directory name under `repos/`.
-`state.toml` is the authoritative mapping from hash to human-readable source.
+`state.json` is the authoritative mapping from hash to human-readable source.
 
 **Example (marketplace-sourced relative plugin):**
 
-```toml
-[[packages]]
-source_kind  = "github"
-source       = "acme-corp/tools::review-plugin"
-clone_url    = "https://github.com/acme-corp/tools.git"
-clone_path   = "repos/b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7"
-branch       = "main"
-commit       = "fed9876abc1234"
-installed_at = "2026-03-02T10:00:00Z"
-updated_at   = "2026-03-02T10:00:00Z"
-marketplace  = "acme-corp/tools"
-plugin_name  = "review-plugin"
-plugin_path  = "plugins/review-plugin"
-
-  [[packages.installations]]
-  target = "claude-code"
-  symlinks = [
-    { src = "skills/review", dst = "~/.claude/skills/review" },
-    { src = "commands/quick-review.md", dst = "~/.claude/commands/quick-review.md" },
+```json
+{
+  "packages": [
+    {
+      "source_kind": "github",
+      "source": "acme-corp/tools::review-plugin",
+      "clone_url": "https://github.com/acme-corp/tools.git",
+      "clone_path": "repos/b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7",
+      "branch": "main",
+      "commit": "fed9876abc1234",
+      "installed_at": "2026-03-02T10:00:00Z",
+      "updated_at": "2026-03-02T10:00:00Z",
+      "marketplace": "acme-corp/tools",
+      "plugin_name": "review-plugin",
+      "plugin_path": "plugins/review-plugin",
+      "installations": [
+        {
+          "target": "claude-code",
+          "symlinks": [
+            { "src": "skills/review", "dst": "~/.claude/skills/review" },
+            { "src": "commands/quick-review.md", "dst": "~/.claude/commands/quick-review.md" }
+          ]
+        }
+      ]
+    }
   ]
+}
 ```
 
 **Atomicity:** The state file is written to a temp file then renamed,
@@ -588,7 +603,7 @@ preventing corruption on interruption.
    - All symlinks use absolute paths (no ~, fully expanded).
 
 8. RECORD STATE
-   Write updated state.toml (atomic write).
+   Write updated state.json (atomic write).
 ```
 
 ### Marketplace Install: Step by Step
@@ -648,10 +663,10 @@ the state file. This ensures state always reflects reality.
 ### Uninstall: Step by Step
 
 ```
-1. LOOKUP package in state.toml. Match by Author/repo or repo (error if ambiguous).
+1. LOOKUP package in state.json. Match by Author/repo or repo (error if ambiguous).
 2. SCOPE to --from targets, or all targets if omitted.
 3. REMOVE symlinks. Warn (don't error) if a symlink is already gone.
-4. UPDATE state.toml. Remove target entries; remove package if no targets remain.
+4. UPDATE state.json. Remove target entries; remove package if no targets remain.
 5. PURGE clone if --purge flag set.
 ```
 
@@ -662,7 +677,7 @@ the state file. This ensures state always reflects reality.
 2. Diff content: compare current files against recorded symlinks.
 3. Create symlinks for new content.
 4. Remove symlinks for deleted content.
-5. Update commit hash and timestamp in state.toml.
+5. Update commit hash and timestamp in state.json.
 ```
 
 ---

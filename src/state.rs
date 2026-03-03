@@ -3,20 +3,36 @@ use std::io::Write;
 use anyhow::{bail, Context, Result};
 use tempfile::NamedTempFile;
 
-use crate::config::{jolene_root, state_file};
+use crate::config::{jolene_root, legacy_state_file, state_file};
 use crate::types::state::{PackageState, State};
 
 pub fn load() -> Result<State> {
     let path = state_file()?;
 
     if !path.exists() {
+        // Migrate from legacy state.toml if it exists.
+        let legacy = legacy_state_file()?;
+        if legacy.exists() {
+            eprintln!("Migrating state.toml → state.json");
+            let text = std::fs::read_to_string(&legacy)
+                .with_context(|| format!("Failed to read legacy state file {}", legacy.display()))?;
+            let state: State = toml::from_str(&text)
+                .with_context(|| format!("Failed to parse legacy state file {}", legacy.display()))?;
+            save(&state)?;
+            let old = legacy.with_file_name("_old_state.toml");
+            std::fs::rename(&legacy, &old)
+                .with_context(|| format!("Failed to rename legacy state file to {}", old.display()))?;
+            return Ok(state);
+        }
+
         return Ok(State::default());
     }
 
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read state file {}", path.display()))?;
 
-    toml::from_str(&text).with_context(|| format!("Failed to parse state file {}", path.display()))
+    serde_json::from_str(&text)
+        .with_context(|| format!("Failed to parse state file {}", path.display()))
 }
 
 pub fn save(state: &State) -> Result<()> {
@@ -25,7 +41,7 @@ pub fn save(state: &State) -> Result<()> {
         .with_context(|| format!("Failed to create jolene directory {}", root.display()))?;
 
     let path = state_file()?;
-    let text = toml::to_string_pretty(state).context("Failed to serialize state")?;
+    let text = serde_json::to_string_pretty(state).context("Failed to serialize state")?;
 
     // Atomic write: write to a temp file in the same directory, then rename.
     let dir = path.parent().unwrap_or(&root);

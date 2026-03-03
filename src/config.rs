@@ -10,11 +10,15 @@ pub fn jolene_root() -> Result<PathBuf> {
 }
 
 pub fn state_file() -> Result<PathBuf> {
+    Ok(jolene_root()?.join("state.json"))
+}
+
+pub fn legacy_state_file() -> Result<PathBuf> {
     Ok(jolene_root()?.join("state.toml"))
 }
 
 /// Resolve an absolute clone directory from a `clone_path` value as stored in
-/// state.toml (e.g. `"repos/owner/repo"`, `"repos/local/name"`).
+/// state.json (e.g. `"repos/owner/repo"`, `"repos/local/name"`).
 pub fn clone_root_for(clone_path: &str) -> Result<PathBuf> {
     Ok(jolene_root()?.join(clone_path))
 }
