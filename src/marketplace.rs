@@ -123,8 +123,7 @@ pub fn load_plugin_json(plugin_dir: &Path) -> Option<PluginJson> {
 
 /// Detect Claude Code-specific features that jolene won't install.
 pub fn detect_ignored_features(plugin_dir: &Path) -> IgnoredFeatures {
-    let cp = plugin_dir.join(".claude-plugin");
-    let has_hooks = cp.join("hooks.json").exists();
+    let has_hooks = plugin_dir.join("hooks").join("hooks.json").exists();
     let has_mcp = plugin_dir.join(".mcp.json").exists();
     let has_lsp = plugin_dir.join(".lsp.json").exists();
 
