@@ -1,7 +1,6 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -35,7 +34,7 @@ impl Target {
     }
 
     pub fn config_root(self) -> Option<PathBuf> {
-        let home = home_dir()?;
+        let home = crate::config::effective_home()?;
         let path = match self {
             Target::ClaudeCode => home.join(".claude"),
             Target::OpenCode => home.join(".config").join("opencode"),

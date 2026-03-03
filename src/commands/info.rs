@@ -16,7 +16,7 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
 
     let short = &pkg.commit[..pkg.commit.len().min(7)];
 
-    out.print(format!("{}", pkg.source));
+    out.print(pkg.source.to_string());
     out.print(format!("  Source:  {}", pkg.source_kind));
     if let Some(url) = &pkg.clone_url {
         out.print(format!("  URL:     {}", url));
@@ -32,22 +32,22 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
         pkg.updated_at.format("%Y-%m-%dT%H:%M:%SZ")
     ));
 
-    if let Ok(clone_root) = clone_root_for(&pkg.clone_path) {
-        if let Ok(manifest) = load_manifest(&clone_root) {
-            out.print(format!("  Version:   {}", manifest.package.version));
-            out.print(format!("  Description: {}", manifest.package.description));
-            out.print(format!("  License:  {}", manifest.package.license));
-            out.print(format!("  Authors:  {}", manifest.package.authors.join(", ")));
-            if let Some(urls) = &manifest.package.urls {
-                if let Some(repo_url) = &urls.repository {
-                    out.print(format!("  Repository: {}", repo_url));
-                }
-                if let Some(homepage) = &urls.homepage {
-                    out.print(format!("  Homepage:   {}", homepage));
-                }
+    if let Ok(clone_root) = clone_root_for(&pkg.clone_path)
+        && let Ok(manifest) = load_manifest(&clone_root)
+    {
+        out.print(format!("  Version:   {}", manifest.package.version));
+        out.print(format!("  Description: {}", manifest.package.description));
+        out.print(format!("  License:  {}", manifest.package.license));
+        out.print(format!("  Authors:  {}", manifest.package.authors.join(", ")));
+        if let Some(urls) = &manifest.package.urls {
+            if let Some(repo_url) = &urls.repository {
+                out.print(format!("  Repository: {}", repo_url));
             }
-            out.print(format!("  Content: {}", manifest.content.summary()));
+            if let Some(homepage) = &urls.homepage {
+                out.print(format!("  Homepage:   {}", homepage));
+            }
         }
+        out.print(format!("  Content: {}", manifest.content.summary()));
     }
 
     for inst in &pkg.installations {

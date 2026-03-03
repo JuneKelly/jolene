@@ -1,0 +1,3 @@
+disallowed-methods = [
+    { path = "dirs::home_dir", reason = "use crate::config::effective_home() instead — it respects JOLENE_EFFECTIVE_HOME" },
+]

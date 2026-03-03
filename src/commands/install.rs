@@ -104,12 +104,12 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
     record_state(
         &mut app_state,
         source,
-        &clone_path,
-        &branch,
-        &commit,
-        now,
         new_installations,
         StateRecord {
+            clone_path,
+            branch,
+            commit,
+            now,
             marketplace: None,
             plugin_name: None,
             plugin_path: None,
@@ -256,12 +256,12 @@ fn run_marketplace(
         record_state(
             &mut app_state,
             &resolved.source,
-            &clone_path,
-            &branch,
-            &commit,
-            now,
             new_installations,
             StateRecord {
+                clone_path,
+                branch: branch.clone(),
+                commit: commit.clone(),
+                now,
                 marketplace: Some(source.display()),
                 plugin_name: Some(entry.name.clone()),
                 plugin_path: resolved.plugin_path,
@@ -507,6 +507,10 @@ fn execute_and_record(
 
 /// Record package state, creating or updating as needed.
 struct StateRecord {
+    clone_path: String,
+    branch: String,
+    commit: String,
+    now: chrono::DateTime<chrono::Utc>,
     marketplace: Option<String>,
     plugin_name: Option<String>,
     plugin_path: Option<String>,
@@ -518,10 +522,6 @@ struct StateRecord {
 fn record_state(
     app_state: &mut crate::types::state::State,
     source: &Source,
-    clone_path: &str,
-    branch: &str,
-    commit: &str,
-    now: chrono::DateTime<chrono::Utc>,
     new_installations: Vec<Installation>,
     record: StateRecord,
 ) -> Result<()> {
@@ -535,9 +535,9 @@ fn record_state(
     // which use "org/marketplace::plugin-name" instead of just "org/marketplace").
     match state::find_package_mut(app_state, &display_name)? {
         Some(existing) => {
-            existing.branch = branch.to_string();
-            existing.commit = commit.to_string();
-            existing.updated_at = now;
+            existing.branch = record.branch;
+            existing.commit = record.commit;
+            existing.updated_at = record.now;
             if record.marketplace.is_some() {
                 existing.marketplace = record.marketplace;
             }
@@ -568,11 +568,11 @@ fn record_state(
                 },
                 source: display_name,
                 clone_url: Some(source.clone_url()),
-                clone_path: clone_path.to_string(),
-                branch: branch.to_string(),
-                commit: commit.to_string(),
-                installed_at: now,
-                updated_at: now,
+                clone_path: record.clone_path,
+                branch: record.branch,
+                commit: record.commit,
+                installed_at: record.now,
+                updated_at: record.now,
                 installations: new_installations,
                 marketplace: record.marketplace,
                 plugin_name: record.plugin_name,

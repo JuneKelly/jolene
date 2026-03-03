@@ -170,9 +170,9 @@ pub fn remove_symlink(dst: &Path) -> Result<()> {
 /// Expand a `~/...` path to an absolute path.
 pub fn expand_tilde(path: &str) -> Option<PathBuf> {
     if let Some(rest) = path.strip_prefix("~/") {
-        dirs::home_dir().map(|h| h.join(rest))
+        crate::config::effective_home().map(|h| h.join(rest))
     } else if path == "~" {
-        dirs::home_dir()
+        crate::config::effective_home()
     } else {
         Some(PathBuf::from(path))
     }
