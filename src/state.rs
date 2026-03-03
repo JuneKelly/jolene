@@ -44,16 +44,22 @@ pub fn save(state: &State) -> Result<()> {
 /// `"alice/tools"`). This short-name lookup is GitHub-specific: local paths and
 /// URLs always contain `/` and are matched exactly by the first branch, but their
 /// components have no meaningful short form.
+///
+/// For marketplace plugins, also matches by `plugin_name` (e.g. `"review-plugin"`
+/// matches a package with `plugin_name: Some("review-plugin")`).
 pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a PackageState>> {
     if name.contains('/') {
         return Ok(state.packages.iter().find(|p| p.source == name));
     }
 
-    // Short-name lookup: GitHub only. Matches the repo component (after the first `/`).
+    // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
     let matches: Vec<_> = state
         .packages
         .iter()
-        .filter(|p| p.source.split('/').nth(1) == Some(name))
+        .filter(|p| {
+            p.source.split('/').nth(1) == Some(name)
+                || p.plugin_name.as_deref() == Some(name)
+        })
         .collect();
 
     match matches.as_slice() {
@@ -79,11 +85,14 @@ pub fn find_package_mut<'a>(
         return Ok(state.packages.iter_mut().find(|p| p.source == name));
     }
 
-    // Short-name lookup: GitHub only. See find_package for details.
+    // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
     let matches: Vec<_> = state
         .packages
         .iter()
-        .filter(|p| p.source.split('/').nth(1) == Some(name))
+        .filter(|p| {
+            p.source.split('/').nth(1) == Some(name)
+                || p.plugin_name.as_deref() == Some(name)
+        })
         .map(|p| p.source.clone())
         .collect();
 
@@ -125,6 +134,9 @@ mod tests {
             installed_at: Utc::now(),
             updated_at: Utc::now(),
             installations: vec![],
+            marketplace: None,
+            plugin_name: None,
+            plugin_path: None,
         }
     }
 
@@ -170,5 +182,66 @@ mod tests {
     fn find_in_empty_state_returns_none() {
         let state = make_state(&[]);
         assert!(find_package(&state, "alice/tools").unwrap().is_none());
+    }
+
+    fn make_marketplace_pkg(source: &str, plugin_name: &str) -> PackageState {
+        let src = Source::from_github("acme/marketplace").unwrap();
+        PackageState {
+            source_kind: SourceKind::GitHub,
+            source: source.to_string(),
+            clone_url: Some("https://github.com/acme/marketplace.git".to_string()),
+            clone_path: format!("repos/{}", src.store_key()),
+            branch: "main".to_string(),
+            commit: "abc123".to_string(),
+            installed_at: Utc::now(),
+            updated_at: Utc::now(),
+            installations: vec![],
+            marketplace: Some("acme/marketplace".to_string()),
+            plugin_name: Some(plugin_name.to_string()),
+            plugin_path: Some(format!("plugins/{}", plugin_name)),
+        }
+    }
+
+    #[test]
+    fn find_marketplace_plugin_by_plugin_name() {
+        let state = State {
+            packages: vec![
+                make_marketplace_pkg("acme/marketplace::review", "review"),
+            ],
+        };
+        let pkg = find_package(&state, "review").unwrap().unwrap();
+        assert_eq!(pkg.source, "acme/marketplace::review");
+    }
+
+    #[test]
+    fn find_marketplace_plugin_by_full_source() {
+        let state = State {
+            packages: vec![
+                make_marketplace_pkg("acme/marketplace::review", "review"),
+            ],
+        };
+        let pkg = find_package(&state, "acme/marketplace::review").unwrap().unwrap();
+        assert_eq!(pkg.plugin_name.as_deref(), Some("review"));
+    }
+
+    #[test]
+    fn find_marketplace_plugin_ambiguous_with_repo() {
+        let state = State {
+            packages: vec![
+                make_pkg("alice/review"),
+                make_marketplace_pkg("acme/marketplace::review", "review"),
+            ],
+        };
+        assert!(find_package(&state, "review").is_err());
+    }
+
+    #[test]
+    fn find_marketplace_plugin_missing_returns_none() {
+        let state = State {
+            packages: vec![
+                make_marketplace_pkg("acme/marketplace::review", "review"),
+            ],
+        };
+        assert!(find_package(&state, "deploy").unwrap().is_none());
     }
 }
