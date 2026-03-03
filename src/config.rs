@@ -3,8 +3,23 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use dirs::home_dir;
 
-pub fn jolene_root() -> Result<PathBuf> {
+/// Return the effective home directory, checking `JOLENE_EFFECTIVE_HOME` first.
+pub fn effective_home() -> Option<PathBuf> {
+    if let Ok(val) = std::env::var("JOLENE_EFFECTIVE_HOME") {
+        if !val.is_empty() {
+            return Some(PathBuf::from(val));
+        }
+    }
     home_dir()
+}
+
+pub fn jolene_root() -> Result<PathBuf> {
+    if let Ok(val) = std::env::var("JOLENE_ROOT") {
+        if !val.is_empty() {
+            return Ok(PathBuf::from(val));
+        }
+    }
+    effective_home()
         .map(|h| h.join(".jolene"))
         .context("Could not determine home directory")
 }
@@ -25,7 +40,7 @@ pub fn clone_root_for(clone_path: &str) -> Result<PathBuf> {
 
 /// Convert an absolute path to a `~/...` display string for user-facing output.
 pub fn display_path(path: &Path) -> String {
-    if let Some(home) = home_dir() {
+    if let Some(home) = effective_home() {
         if let Ok(rel) = path.strip_prefix(&home) {
             return format!("~/{}", rel.display());
         }
