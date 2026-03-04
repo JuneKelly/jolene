@@ -18,11 +18,13 @@ requiring upstream changes. Multi-target, symlink-based, CLI-first.
 Pre-built binaries are available on the [GitHub releases page](https://github.com/JuneKelly/jolene/releases).
 Download the binary for your platform, make it executable, and place it somewhere on your `PATH`.
 
-Alternatively, build from source with Cargo:
+Alternatively, build from source:
 
 ```sh
-cargo install --path .
+just install
 ```
+
+This requires [just](https://github.com/just-systems/just) and a Rust toolchain.
 
 ---
 
@@ -233,6 +235,19 @@ plugins. Each plugin has its own directory with the same `commands/`, `skills/`,
 
 Plugins can live inside the marketplace repo (relative source) or in their own
 repos (GitHub/URL source). See `docs/SPEC.md` for the full marketplace format.
+
+---
+
+## Development
+
+This project uses [just](https://github.com/just-systems/just) as a task runner.
+
+```sh
+just          # list available recipes
+just build    # build the project
+just test     # run tests
+just install  # install jolene to ~/.cargo/bin
+```
 
 ---
 
