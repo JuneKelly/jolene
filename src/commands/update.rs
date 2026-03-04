@@ -7,7 +7,9 @@ use crate::config::clone_root_for;
 use crate::discovery;
 use crate::git;
 use crate::output::Output;
+use crate::skill_check;
 use crate::state;
+use crate::types::content::ContentType;
 use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink, SymlinkPlan};
 use crate::types::content::ContentItem;
 use crate::types::state::State;
@@ -77,6 +79,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         collect_content_items(&manifest)
     };
 
+    // Skill quality checks (advisory)
+    skill_check::check_and_warn_skills(&items, &content_dir, out, "  ");
+
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
 
@@ -109,9 +114,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         let supported: Vec<_> = items
             .iter()
             .filter(|item| match item.content_type {
-                crate::types::content::ContentType::Command => target.supports_commands(),
-                crate::types::content::ContentType::Skill => target.supports_skills(),
-                crate::types::content::ContentType::Agent => target.supports_agents(),
+                ContentType::Command => target.supports_commands(),
+                ContentType::Skill => target.supports_skills(),
+                ContentType::Agent => target.supports_agents(),
             })
             .cloned()
             .collect();

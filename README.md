@@ -85,6 +85,11 @@ Installing from marketplace acme-corp/tools...
 Jolene installs commands, skills, and agents from plugins. Hooks, MCP servers,
 and LSP servers are Claude Code-specific and are skipped with a warning.
 
+During install, jolene checks each skill's `SKILL.md` frontmatter and warns
+about missing `name` or `description` fields, displays `compatibility` notes,
+and flags non-executable scripts. These are advisory only and never block
+installation.
+
 ### Browse contents
 
 ```sh

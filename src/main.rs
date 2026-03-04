@@ -5,6 +5,7 @@ mod discovery;
 mod git;
 mod marketplace;
 mod output;
+mod skill_check;
 mod state;
 mod symlink;
 mod types;

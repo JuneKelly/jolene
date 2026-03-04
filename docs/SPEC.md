@@ -110,6 +110,7 @@ $ jolene install --github junebug/review-tools --to opencode
 Installing junebug/review-tools...
   Cloning https://github.com/junebug/review-tools.git
   Found: 1 command, 2 skills
+  Note: skill 'code-analysis' compatibility: Requires git
 
   Installing to opencode:
     + commands/review.md -> ~/.config/opencode/commands/review.md
@@ -299,6 +300,10 @@ A package MUST have a `jolene.toml` and at least one content directory
 - `commands/*.md` — Only `.md` files at the top level. Subdirectories ignored.
 - `skills/*/` — Each subdirectory is a skill. Must contain `SKILL.md`.
   Additional files within the skill directory are preserved.
+  `SKILL.md` should include YAML frontmatter with `name` and `description`
+  fields (per the Agent Skills specification). An optional `compatibility`
+  field may describe environment requirements. Executable scripts should
+  live in a `scripts/` subdirectory with execute permissions set.
 - `agents/*.md` — Only `.md` files at the top level. Subdirectories ignored.
 
 ### Manifest: jolene.toml
@@ -590,6 +595,15 @@ preventing corruption on interruption.
      commands/{name}.md, skills/{name}/SKILL.md, agents/{name}.md.
    - Abort with descriptive error if validation fails.
 
+3b. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
+    For each skill, parse SKILL.md frontmatter:
+    - Warn if 'name' or 'description' is missing.
+    - Display 'compatibility' note if present.
+    - Warn about non-executable files in scripts/.
+    Frontmatter parsing stops at the first line that is not a `key: value`
+    pair (or the closing `---`). Fields after a malformed or blank line
+    are not extracted.
+
 4. RESOLVE TARGETS
    - If --to specified: use those targets.
    - If --to omitted: detect by checking which config roots exist.
@@ -645,10 +659,13 @@ preventing corruption on interruption.
        Scan plugin directory for commands/*.md, skills/*/SKILL.md, agents/*.md.
        Skip plugin if no installable content found.
 
-   4d. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
+   4d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
+       Same as step 3b above, applied to each discovered skill.
+
+   4e. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
        Same as native install (steps 4-7 above).
 
-   4e. RECORD STATE
+   4f. RECORD STATE
        Store with marketplace provenance fields.
        Relative plugins use composite source: "org/marketplace::plugin-name".
        External plugins use their own source identity.
