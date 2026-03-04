@@ -11,6 +11,12 @@ pub struct SkillCheckReport {
     pub non_executable_scripts: Vec<String>,
 }
 
+/// Result of checking a single agent definition file.
+pub struct AgentCheckReport {
+    pub agent_name: String,
+    pub missing_fields: Vec<&'static str>,
+}
+
 /// Parsed SKILL.md frontmatter fields.
 struct Frontmatter {
     name: Option<String>,
@@ -199,6 +205,66 @@ pub fn check_and_warn_skills(items: &[ContentItem], content_dir: &Path, out: &Ou
     }
 }
 
+/// Check all agents under `content_dir` for frontmatter quality.
+pub fn check_agents(content_dir: &Path, agent_names: &[String]) -> Vec<AgentCheckReport> {
+    let mut reports = Vec::new();
+
+    for name in agent_names {
+        let agent_md = content_dir.join("agents").join(format!("{}.md", name));
+
+        let mut missing_fields = Vec::new();
+
+        if let Ok(content) = std::fs::read_to_string(&agent_md) {
+            let fm = parse_frontmatter(&content);
+
+            if fm.name.is_none() {
+                missing_fields.push("name");
+            }
+            if fm.description.is_none() {
+                missing_fields.push("description");
+            }
+        } else {
+            missing_fields.push("name");
+            missing_fields.push("description");
+        }
+
+        reports.push(AgentCheckReport {
+            agent_name: name.clone(),
+            missing_fields,
+        });
+    }
+
+    reports
+}
+
+/// Print advisory warnings from agent check reports.
+pub fn print_agent_warnings(reports: &[AgentCheckReport], out: &Output, indent: &str) {
+    for report in reports {
+        for field in &report.missing_fields {
+            out.print(format!(
+                "{}Warning: agent '{}' is missing '{}'",
+                indent, report.agent_name, field
+            ));
+        }
+    }
+}
+
+/// Run advisory agent quality checks for any agents in the content items.
+///
+/// Filters items to agents, runs frontmatter checks, and prints warnings.
+/// This is a convenience wrapper used by install and update.
+pub fn check_and_warn_agents(items: &[ContentItem], content_dir: &Path, out: &Output, indent: &str) {
+    let agent_names: Vec<String> = items
+        .iter()
+        .filter(|i| i.content_type == ContentType::Agent)
+        .map(|i| i.name.clone())
+        .collect();
+    if !agent_names.is_empty() {
+        let reports = check_agents(content_dir, &agent_names);
+        print_agent_warnings(&reports, out, indent);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +413,62 @@ mod tests {
 
         let reports = check_skills(dir.path(), &["my-skill".to_string()]);
         assert!(reports[0].non_executable_scripts.is_empty());
+    }
+
+    #[test]
+    fn check_agents_warns_missing_name_description() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("agents")).unwrap();
+        fs::write(
+            dir.path().join("agents/reviewer.md"),
+            "# Just a body, no frontmatter\n",
+        )
+        .unwrap();
+
+        let reports = check_agents(dir.path(), &["reviewer".to_string()]);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].agent_name, "reviewer");
+        assert_eq!(reports[0].missing_fields, vec!["name", "description"]);
+    }
+
+    #[test]
+    fn check_agents_clean_with_both_fields() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("agents")).unwrap();
+        fs::write(
+            dir.path().join("agents/reviewer.md"),
+            "---\nname: reviewer\ndescription: Reviews code for quality\n---\n\nYou are a code reviewer.\n",
+        )
+        .unwrap();
+
+        let reports = check_agents(dir.path(), &["reviewer".to_string()]);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].missing_fields.is_empty());
+    }
+
+    #[test]
+    fn check_agents_warns_missing_description_only() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("agents")).unwrap();
+        fs::write(
+            dir.path().join("agents/planner.md"),
+            "---\nname: planner\n---\n\nYou are a planner.\n",
+        )
+        .unwrap();
+
+        let reports = check_agents(dir.path(), &["planner".to_string()]);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].missing_fields, vec!["description"]);
+    }
+
+    #[test]
+    fn check_agents_unreadable_file_warns_both() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("agents")).unwrap();
+        // Don't create the file — simulates unreadable
+
+        let reports = check_agents(dir.path(), &["missing-agent".to_string()]);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].missing_fields, vec!["name", "description"]);
     }
 }
