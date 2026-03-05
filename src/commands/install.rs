@@ -12,7 +12,7 @@ use crate::marketplace::{self, PluginSource};
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{execute_symlinks, plan_symlinks, SymlinkPlan};
-use crate::skill_check;
+use crate::content_check;
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState, SourceKind};
@@ -69,8 +69,9 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
 
     out.print(format!("  Found: {}", manifest.content.summary()));
 
-    // Skill quality checks (advisory)
-    skill_check::check_and_warn_skills(&items, &clone_root, out, "  ");
+    // Content quality checks (advisory)
+    content_check::check_and_warn_skills(&items, &clone_root, out, "  ");
+    content_check::check_and_warn_agents(&items, &clone_root, out, "  ");
 
     // Resolve targets
     let targets = resolve_targets(to)?;
@@ -232,8 +233,9 @@ fn run_marketplace(
             discovery::content_summary(&items)
         ));
 
-        // Skill quality checks (advisory)
-        skill_check::check_and_warn_skills(&items, &resolved.dir, out, "    ");
+        // Content quality checks (advisory)
+        content_check::check_and_warn_skills(&items, &resolved.dir, out, "    ");
+        content_check::check_and_warn_agents(&items, &resolved.dir, out, "    ");
 
         // Rebuild display_names each iteration so cross-plugin conflicts are caught.
         let display_names: HashMap<String, String> = app_state

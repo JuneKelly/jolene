@@ -305,6 +305,9 @@ A package MUST have a `jolene.toml` and at least one content directory
   field may describe environment requirements. Executable scripts should
   live in a `scripts/` subdirectory with execute permissions set.
 - `agents/*.md` — Only `.md` files at the top level. Subdirectories ignored.
+  Agent `.md` files should include YAML frontmatter with `name` and `description`
+  fields. The `name` is the agent's identifier and the `description` tells the
+  host tool when to delegate tasks to this agent.
 
 ### Manifest: jolene.toml
 
@@ -604,6 +607,11 @@ preventing corruption on interruption.
     pair (or the closing `---`). Fields after a malformed or blank line
     are not extracted.
 
+3c. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
+    For each agent, parse the .md file frontmatter:
+    - Warn if 'name' or 'description' is missing.
+    Frontmatter parsing uses the same rules as skill checks (step 3b).
+
 4. RESOLVE TARGETS
    - If --to specified: use those targets.
    - If --to omitted: detect by checking which config roots exist.
@@ -662,10 +670,13 @@ preventing corruption on interruption.
    4d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
        Same as step 3b above, applied to each discovered skill.
 
-   4e. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
+   4e. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
+       Same as step 3c above, applied to each discovered agent.
+
+   4f. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
        Same as native install (steps 4-7 above).
 
-   4f. RECORD STATE
+   4g. RECORD STATE
        Store with marketplace provenance fields.
        Relative plugins use composite source: "org/marketplace::plugin-name".
        External plugins use their own source identity.
