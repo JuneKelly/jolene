@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use tempfile::NamedTempFile;
 
 use crate::config::{jolene_root, legacy_state_file, state_file};
@@ -14,14 +14,17 @@ pub fn load() -> Result<State> {
         let legacy = legacy_state_file()?;
         if legacy.exists() {
             eprintln!("Migrating state.toml → state.json");
-            let text = std::fs::read_to_string(&legacy)
-                .with_context(|| format!("Failed to read legacy state file {}", legacy.display()))?;
-            let state: State = toml::from_str(&text)
-                .with_context(|| format!("Failed to parse legacy state file {}", legacy.display()))?;
+            let text = std::fs::read_to_string(&legacy).with_context(|| {
+                format!("Failed to read legacy state file {}", legacy.display())
+            })?;
+            let state: State = toml::from_str(&text).with_context(|| {
+                format!("Failed to parse legacy state file {}", legacy.display())
+            })?;
             save(&state)?;
             let old = legacy.with_file_name("_old_state.toml");
-            std::fs::rename(&legacy, &old)
-                .with_context(|| format!("Failed to rename legacy state file to {}", old.display()))?;
+            std::fs::rename(&legacy, &old).with_context(|| {
+                format!("Failed to rename legacy state file to {}", old.display())
+            })?;
             return Ok(state);
         }
 
@@ -73,8 +76,7 @@ pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a Packa
         .packages
         .iter()
         .filter(|p| {
-            p.source.split('/').nth(1) == Some(name)
-                || p.plugin_name.as_deref() == Some(name)
+            p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
         })
         .collect();
 
@@ -106,8 +108,7 @@ pub fn find_package_mut<'a>(
         .packages
         .iter()
         .filter(|p| {
-            p.source.split('/').nth(1) == Some(name)
-                || p.plugin_name.as_deref() == Some(name)
+            p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
         })
         .map(|p| p.source.clone())
         .collect();
@@ -153,6 +154,7 @@ mod tests {
             marketplace: None,
             plugin_name: None,
             plugin_path: None,
+            prefix: None,
         }
     }
 
@@ -215,15 +217,14 @@ mod tests {
             marketplace: Some("acme/marketplace".to_string()),
             plugin_name: Some(plugin_name.to_string()),
             plugin_path: Some(format!("plugins/{}", plugin_name)),
+            prefix: None,
         }
     }
 
     #[test]
     fn find_marketplace_plugin_by_plugin_name() {
         let state = State {
-            packages: vec![
-                make_marketplace_pkg("acme/marketplace::review", "review"),
-            ],
+            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
         };
         let pkg = find_package(&state, "review").unwrap().unwrap();
         assert_eq!(pkg.source, "acme/marketplace::review");
@@ -232,11 +233,11 @@ mod tests {
     #[test]
     fn find_marketplace_plugin_by_full_source() {
         let state = State {
-            packages: vec![
-                make_marketplace_pkg("acme/marketplace::review", "review"),
-            ],
+            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
         };
-        let pkg = find_package(&state, "acme/marketplace::review").unwrap().unwrap();
+        let pkg = find_package(&state, "acme/marketplace::review")
+            .unwrap()
+            .unwrap();
         assert_eq!(pkg.plugin_name.as_deref(), Some("review"));
     }
 
@@ -254,9 +255,7 @@ mod tests {
     #[test]
     fn find_marketplace_plugin_missing_returns_none() {
         let state = State {
-            packages: vec![
-                make_marketplace_pkg("acme/marketplace::review", "review"),
-            ],
+            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
         };
         assert!(find_package(&state, "deploy").unwrap().is_none());
     }

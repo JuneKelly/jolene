@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::Utc;
 
 use crate::config::clone_root_for;
+use crate::content_check;
 use crate::discovery;
 use crate::git;
 use crate::output::Output;
-use crate::content_check;
 use crate::state;
-use crate::types::content::ContentType;
-use crate::symlink::{execute_symlinks, expand_tilde, plan_symlinks, remove_symlink, SymlinkPlan};
+use crate::symlink::{SymlinkPlan, execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
 use crate::types::content::ContentItem;
+use crate::types::content::ContentType;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
@@ -26,7 +26,11 @@ pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
                 None => bail!("Package '{}' is not installed.", name),
             }
         }
-        None => app_state.packages.iter().map(|p| p.source.clone()).collect(),
+        None => app_state
+            .packages
+            .iter()
+            .map(|p| p.source.clone())
+            .collect(),
     };
 
     if sources.is_empty() {
@@ -50,6 +54,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let installations: Vec<_> = pkg.installations.clone();
     let is_marketplace = pkg.marketplace.is_some();
     let plugin_path = pkg.plugin_path.clone();
+    let prefix = pkg.prefix.clone();
     let clone_root = clone_root_for(&pkg.clone_path)?;
 
     let display_names: HashMap<String, String> = app_state
@@ -127,8 +132,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             .map(|i| i.relative_path().to_string_lossy().into_owned())
             .collect();
 
-        let existing_srcs: HashSet<String> =
-            inst.symlinks.iter().map(|e| e.src.clone()).collect();
+        let existing_srcs: HashSet<String> = inst.symlinks.iter().map(|e| e.src.clone()).collect();
 
         let new_items: Vec<_> = supported
             .iter()
@@ -143,6 +147,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             inst.target.as_str(),
             &store_key,
             &display_names,
+            prefix.as_deref(),
         )?;
 
         let removals: Vec<String> = inst
@@ -190,7 +195,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             .iter_mut()
             .find(|i| i.target == stage.target_slug)
         {
-            inst_mut.symlinks.retain(|e| stage.new_srcs.contains(&e.src));
+            inst_mut
+                .symlinks
+                .retain(|e| stage.new_srcs.contains(&e.src));
             inst_mut.symlinks.extend(new_entries);
         }
     }

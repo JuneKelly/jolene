@@ -82,11 +82,9 @@ impl<'de> Deserialize<'de> for PluginEntry {
                     git_ref: raw.git_ref,
                 }
             }
-            s if s.starts_with("./") || s.starts_with("../") => {
-                PluginSource::Relative {
-                    path: s.to_string(),
-                }
-            }
+            s if s.starts_with("./") || s.starts_with("../") => PluginSource::Relative {
+                path: s.to_string(),
+            },
             _ => PluginSource::Unsupported,
         };
         Ok(PluginEntry {
@@ -102,7 +100,9 @@ impl<'de> Deserialize<'de> for PluginEntry {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum PluginSource {
-    Relative { path: String },
+    Relative {
+        path: String,
+    },
     GitHub {
         repo: String,
         git_ref: Option<String>,
@@ -230,7 +230,10 @@ mod tests {
         let mp: Marketplace = serde_json::from_str(json).unwrap();
         assert_eq!(mp.plugins.len(), 1);
         assert_eq!(mp.plugins[0].name, "review-plugin");
-        assert!(matches!(mp.plugins[0].source, PluginSource::Relative { .. }));
+        assert!(matches!(
+            mp.plugins[0].source,
+            PluginSource::Relative { .. }
+        ));
     }
 
     #[test]

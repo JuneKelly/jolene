@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::cli::ContentsArgs;
 use crate::config::clone_root_for;
@@ -48,11 +48,7 @@ pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
     }
 }
 
-fn show_marketplace(
-    source: &Source,
-    clone_root: &std::path::Path,
-    out: &Output,
-) -> Result<()> {
+fn show_marketplace(source: &Source, clone_root: &std::path::Path, out: &Output) -> Result<()> {
     let mp_path = clone_root.join(".claude-plugin").join("marketplace.json");
     if !mp_path.exists() {
         bail!(
@@ -115,13 +111,9 @@ fn show_marketplace(
     Ok(())
 }
 
-fn show_native_package(
-    source: &Source,
-    clone_root: &std::path::Path,
-    out: &Output,
-) -> Result<()> {
-    let manifest = load_manifest(clone_root)
-        .map_err(|e| anyhow::anyhow!("{} {}", source.display(), e))?;
+fn show_native_package(source: &Source, clone_root: &std::path::Path, out: &Output) -> Result<()> {
+    let manifest =
+        load_manifest(clone_root).map_err(|e| anyhow::anyhow!("{} {}", source.display(), e))?;
 
     let items = collect_content_items(&manifest);
 

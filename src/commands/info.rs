@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::config::clone_root_for;
 use crate::output::Output;
@@ -18,6 +18,9 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
 
     out.print(pkg.source.to_string());
     out.print(format!("  Source:  {}", pkg.source_kind));
+    if let Some(ref prefix) = pkg.prefix {
+        out.print(format!("  Prefix:  {}", prefix));
+    }
     if let Some(url) = &pkg.clone_url {
         out.print(format!("  URL:     {}", url));
     }
@@ -38,7 +41,10 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
         out.print(format!("  Version:   {}", manifest.package.version));
         out.print(format!("  Description: {}", manifest.package.description));
         out.print(format!("  License:  {}", manifest.package.license));
-        out.print(format!("  Authors:  {}", manifest.package.authors.join(", ")));
+        out.print(format!(
+            "  Authors:  {}",
+            manifest.package.authors.join(", ")
+        ));
         if let Some(urls) = &manifest.package.urls {
             if let Some(repo_url) = &urls.repository {
                 out.print(format!("  Repository: {}", repo_url));

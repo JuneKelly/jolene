@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::os::unix::fs as unix_fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::config::{display_path, jolene_root};
 use crate::types::content::ContentItem;
@@ -81,25 +81,32 @@ pub fn plan_symlinks(
     target_slug: &str,
     package_source: &str,
     display_names: &HashMap<String, String>,
+    prefix: Option<&str>,
 ) -> Result<Vec<SymlinkPlan>> {
     let mut plans = Vec::new();
 
     for item in items {
         let src = item.source_path(clone_root);
         let content_dir = target_root.join(item.content_type.dir_name());
-        let dst = item.dest_path(&content_dir);
-
+        let dst = item.dest_path(&content_dir, prefix);
         let relative_src = item.relative_path().to_string_lossy().into_owned();
 
         match check_conflict(&dst, package_source)? {
             ConflictCheck::Clear => {
-                plans.push(SymlinkPlan { src, dst, relative_src });
+                plans.push(SymlinkPlan {
+                    src,
+                    dst,
+                    relative_src,
+                });
             }
             ConflictCheck::AlreadyInstalled => {
                 // Already correct — skip silently.
             }
             ConflictCheck::PackageConflict { store_key } => {
-                let name = display_names.get(&store_key).map(|s| s.as_str()).unwrap_or(&store_key);
+                let name = display_names
+                    .get(&store_key)
+                    .map(|s| s.as_str())
+                    .unwrap_or(&store_key);
                 bail!(
                     "{} is already provided by {}\n\n  To resolve: jolene uninstall {} --from {}",
                     display_path(&dst),

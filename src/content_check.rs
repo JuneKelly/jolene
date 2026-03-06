@@ -39,7 +39,13 @@ fn parse_frontmatter(content: &str) -> Frontmatter {
     // First line must be exactly "---"
     match lines.next() {
         Some(line) if line.trim() == "---" => {}
-        _ => return Frontmatter { name, description, compatibility },
+        _ => {
+            return Frontmatter {
+                name,
+                description,
+                compatibility,
+            };
+        }
     }
 
     // Read lines until the closing "---"
@@ -71,7 +77,11 @@ fn parse_frontmatter(content: &str) -> Frontmatter {
         }
     }
 
-    Frontmatter { name, description, compatibility }
+    Frontmatter {
+        name,
+        description,
+        compatibility,
+    }
 }
 
 /// Strip surrounding single or double quotes from a string value.
@@ -79,9 +89,7 @@ fn strip_quotes(s: &str) -> String {
     if s.len() < 2 {
         return s.to_string();
     }
-    if (s.starts_with('"') && s.ends_with('"'))
-        || (s.starts_with('\'') && s.ends_with('\''))
-    {
+    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         s[1..s.len() - 1].to_string()
     } else {
         s.to_string()
@@ -193,7 +201,12 @@ pub fn print_warnings(reports: &[SkillCheckReport], out: &Output, indent: &str) 
 ///
 /// Filters items to skills, runs frontmatter and executability checks,
 /// and prints warnings. This is a convenience wrapper used by install and update.
-pub fn check_and_warn_skills(items: &[ContentItem], content_dir: &Path, out: &Output, indent: &str) {
+pub fn check_and_warn_skills(
+    items: &[ContentItem],
+    content_dir: &Path,
+    out: &Output,
+    indent: &str,
+) {
     let skill_names: Vec<String> = items
         .iter()
         .filter(|i| i.content_type == ContentType::Skill)
@@ -253,7 +266,12 @@ pub fn print_agent_warnings(reports: &[AgentCheckReport], out: &Output, indent: 
 ///
 /// Filters items to agents, runs frontmatter checks, and prints warnings.
 /// This is a convenience wrapper used by install and update.
-pub fn check_and_warn_agents(items: &[ContentItem], content_dir: &Path, out: &Output, indent: &str) {
+pub fn check_and_warn_agents(
+    items: &[ContentItem],
+    content_dir: &Path,
+    out: &Output,
+    indent: &str,
+) {
     let agent_names: Vec<String> = items
         .iter()
         .filter(|i| i.content_type == ContentType::Agent)
@@ -327,7 +345,10 @@ mod tests {
         let content = "---\nname: my-skill\nthis is garbage\ndescription: should not appear\n---\n";
         let fm = parse_frontmatter(content);
         assert_eq!(fm.name.as_deref(), Some("my-skill"));
-        assert!(fm.description.is_none(), "description after malformed line should not be parsed");
+        assert!(
+            fm.description.is_none(),
+            "description after malformed line should not be parsed"
+        );
         assert!(fm.compatibility.is_none());
     }
 
@@ -336,14 +357,21 @@ mod tests {
         let content = "---\nname: my-skill\n\ndescription: should not appear\n---\n";
         let fm = parse_frontmatter(content);
         assert_eq!(fm.name.as_deref(), Some("my-skill"));
-        assert!(fm.description.is_none(), "description after blank line should not be parsed");
+        assert!(
+            fm.description.is_none(),
+            "description after blank line should not be parsed"
+        );
     }
 
     #[test]
     fn check_skills_warns_missing_name_description() {
         let dir = TempDir::new().unwrap();
         fs::create_dir_all(dir.path().join("skills/my-skill")).unwrap();
-        fs::write(dir.path().join("skills/my-skill/SKILL.md"), "# No frontmatter").unwrap();
+        fs::write(
+            dir.path().join("skills/my-skill/SKILL.md"),
+            "# No frontmatter",
+        )
+        .unwrap();
 
         let reports = check_skills(dir.path(), &["my-skill".to_string()]);
         assert_eq!(reports.len(), 1);
@@ -375,7 +403,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let skill_dir = dir.path().join("skills/my-skill");
         fs::create_dir_all(skill_dir.join("scripts")).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\ndescription: A skill\n---\n").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: A skill\n---\n",
+        )
+        .unwrap();
         let script = skill_dir.join("scripts/analyze.sh");
         fs::write(&script, "#!/bin/sh\necho hi").unwrap();
         fs::set_permissions(&script, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -392,7 +424,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let skill_dir = dir.path().join("skills/my-skill");
         fs::create_dir_all(skill_dir.join("scripts")).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "---\nname: my-skill\ndescription: A skill\n---\n").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: A skill\n---\n",
+        )
+        .unwrap();
         let script = skill_dir.join("scripts/run.sh");
         fs::write(&script, "#!/bin/sh\necho hi").unwrap();
         fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();

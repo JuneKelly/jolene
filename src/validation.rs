@@ -1,9 +1,65 @@
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::manifest::Manifest;
+
+/// Validate a prefix string for use in content name prefixing.
+///
+/// A valid prefix must:
+/// - Be 1-64 characters long
+/// - Contain only lowercase ASCII letters, digits, and hyphens (`[a-z0-9-]`)
+/// - Not start or end with a hyphen
+/// - Not contain consecutive hyphens (`--`), since `--` is the prefix separator
+pub fn validate_prefix(s: &str) -> Result<()> {
+    if s.is_empty() {
+        bail!("prefix must not be empty");
+    }
+    if s.len() > 64 {
+        bail!("prefix must be at most 64 characters (got {})", s.len());
+    }
+    if s.starts_with('-') {
+        bail!("prefix must not start with a hyphen");
+    }
+    if s.ends_with('-') {
+        bail!("prefix must not end with a hyphen");
+    }
+    if s.contains("--") {
+        bail!("prefix must not contain consecutive hyphens");
+    }
+    if !s
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        bail!("prefix must contain only lowercase letters, digits, and hyphens");
+    }
+    Ok(())
+}
+
+/// Resolve the effective prefix from CLI flags and manifest.
+///
+/// Priority: `--no-prefix` → None, `--prefix X` → Some(X), manifest prefix, else None.
+pub fn resolve_prefix(
+    cli_prefix: Option<&str>,
+    cli_no_prefix: bool,
+    manifest_prefix: Option<&str>,
+) -> Result<Option<String>> {
+    if cli_no_prefix {
+        return Ok(None);
+    }
+    if let Some(p) = cli_prefix {
+        validate_prefix(p)?;
+        return Ok(Some(p.to_string()));
+    }
+    match manifest_prefix {
+        Some(p) => {
+            validate_prefix(p)?;
+            Ok(Some(p.to_string()))
+        }
+        None => Ok(None),
+    }
+}
 
 pub fn load_manifest(clone_root: &Path) -> Result<Manifest> {
     let path = clone_root.join("jolene.toml");
@@ -24,6 +80,10 @@ pub fn load_manifest(clone_root: &Path) -> Result<Manifest> {
 }
 
 pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
+    if let Some(ref prefix) = manifest.package.prefix {
+        validate_prefix(prefix).with_context(|| "Invalid prefix in jolene.toml [package] table")?;
+    }
+
     if manifest.content.is_empty() {
         bail!(
             "has no installable content.\n  Expected at least one of: commands/, skills/, agents/"
@@ -52,10 +112,7 @@ pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
         }
         let skill_md = skill_dir.join("SKILL.md");
         if !skill_md.exists() {
-            bail!(
-                "Invalid jolene.toml: skill '{}' is missing SKILL.md",
-                name
-            );
+            bail!("Invalid jolene.toml: skill '{}' is missing SKILL.md", name);
         }
     }
 
@@ -87,4 +144,153 @@ pub fn collect_content_items(manifest: &Manifest) -> Vec<ContentItem> {
     }
 
     items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_simple() {
+        assert!(validate_prefix("abc").is_ok());
+    }
+
+    #[test]
+    fn valid_with_hyphens() {
+        assert!(validate_prefix("my-prefix").is_ok());
+    }
+
+    #[test]
+    fn valid_single_char() {
+        assert!(validate_prefix("a").is_ok());
+    }
+
+    #[test]
+    fn valid_alphanumeric() {
+        assert!(validate_prefix("a1").is_ok());
+    }
+
+    #[test]
+    fn valid_multi_hyphen_segments() {
+        assert!(validate_prefix("foo-bar-baz").is_ok());
+    }
+
+    #[test]
+    fn valid_all_digits() {
+        assert!(validate_prefix("123").is_ok());
+    }
+
+    #[test]
+    fn invalid_empty() {
+        let err = validate_prefix("").unwrap_err();
+        assert!(err.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn invalid_leading_hyphen() {
+        let err = validate_prefix("-abc").unwrap_err();
+        assert!(err.to_string().contains("must not start with a hyphen"));
+    }
+
+    #[test]
+    fn invalid_trailing_hyphen() {
+        let err = validate_prefix("abc-").unwrap_err();
+        assert!(err.to_string().contains("must not end with a hyphen"));
+    }
+
+    #[test]
+    fn invalid_consecutive_hyphens() {
+        let err = validate_prefix("a--b").unwrap_err();
+        assert!(err.to_string().contains("consecutive hyphens"));
+    }
+
+    #[test]
+    fn invalid_uppercase() {
+        let err = validate_prefix("ABC").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("lowercase letters, digits, and hyphens")
+        );
+    }
+
+    #[test]
+    fn invalid_underscore() {
+        let err = validate_prefix("foo_bar").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("lowercase letters, digits, and hyphens")
+        );
+    }
+
+    #[test]
+    fn invalid_space() {
+        let err = validate_prefix("foo bar").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("lowercase letters, digits, and hyphens")
+        );
+    }
+
+    #[test]
+    fn invalid_too_long() {
+        let long = "a".repeat(65);
+        let err = validate_prefix(&long).unwrap_err();
+        assert!(err.to_string().contains("at most 64 characters"));
+    }
+
+    #[test]
+    fn valid_exactly_64_chars() {
+        let s = "a".repeat(64);
+        assert!(validate_prefix(&s).is_ok());
+    }
+
+    // resolve_prefix tests
+
+    #[test]
+    fn resolve_cli_prefix() {
+        let result = resolve_prefix(Some("abc"), false, None).unwrap();
+        assert_eq!(result, Some("abc".to_string()));
+    }
+
+    #[test]
+    fn resolve_no_prefix_flag() {
+        let result = resolve_prefix(None, true, Some("jb")).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_manifest_prefix_when_no_cli_flags() {
+        let result = resolve_prefix(None, false, Some("jb")).unwrap();
+        assert_eq!(result, Some("jb".to_string()));
+    }
+
+    #[test]
+    fn resolve_none_when_nothing_set() {
+        let result = resolve_prefix(None, false, None).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_cli_prefix_overrides_manifest() {
+        let result = resolve_prefix(Some("abc"), false, Some("jb")).unwrap();
+        assert_eq!(result, Some("abc".to_string()));
+    }
+
+    #[test]
+    fn resolve_no_prefix_overrides_manifest() {
+        let result = resolve_prefix(None, true, Some("jb")).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn resolve_cli_prefix_validates() {
+        let result = resolve_prefix(Some("INVALID"), false, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_manifest_prefix_validates() {
+        let result = resolve_prefix(None, false, Some("INVALID"));
+        assert!(result.is_err());
+    }
 }

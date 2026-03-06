@@ -127,6 +127,14 @@ pub struct InstallArgs {
     /// Select specific plugins from a marketplace catalog (comma-separated)
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
     pub pick: Vec<String>,
+
+    /// Prefix for installed content names (e.g. --prefix jb → jb--review.md)
+    #[arg(long, value_name = "PREFIX")]
+    pub prefix: Option<String>,
+
+    /// Suppress any manifest-defined prefix; install flat
+    #[arg(long, conflicts_with = "prefix")]
+    pub no_prefix: bool,
 }
 
 #[derive(Debug, Args)]

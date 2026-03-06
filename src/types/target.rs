@@ -56,9 +56,7 @@ impl Target {
     }
 
     pub fn exists(self) -> bool {
-        self.config_root()
-            .map(|p| p.exists())
-            .unwrap_or(false)
+        self.config_root().map(|p| p.exists()).unwrap_or(false)
     }
 
     pub fn detect_available() -> Vec<Target> {
@@ -111,7 +109,11 @@ mod tests {
     #[test]
     fn supports_skills_for_all_targets() {
         for target in Target::all() {
-            assert!(target.supports_skills(), "{} should support skills", target.slug());
+            assert!(
+                target.supports_skills(),
+                "{} should support skills",
+                target.slug()
+            );
         }
     }
 
