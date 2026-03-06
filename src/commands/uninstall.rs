@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 use crate::config::jolene_root;
 use crate::output::Output;
@@ -23,8 +23,11 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
     let target_slugs: Vec<String> = if from.is_empty() {
         pkg.installations.iter().map(|i| i.target.clone()).collect()
     } else {
-        let installed_targets: Vec<&str> =
-            pkg.installations.iter().map(|i| i.target.as_str()).collect();
+        let installed_targets: Vec<&str> = pkg
+            .installations
+            .iter()
+            .map(|i| i.target.as_str())
+            .collect();
         for slug in from {
             if Target::from_slug(slug).is_none() {
                 bail!(
@@ -87,7 +90,10 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
 
     // 5. Purge clone if requested
     if purge && remove_package {
-        let clone_still_needed = app_state.packages.iter().any(|p| p.clone_path == clone_path);
+        let clone_still_needed = app_state
+            .packages
+            .iter()
+            .any(|p| p.clone_path == clone_path);
         if clone_still_needed {
             out.print("  --purge skipped: clone is shared with other installed plugins.");
         } else {

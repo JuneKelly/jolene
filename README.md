@@ -33,15 +33,34 @@ This requires [just](https://github.com/just-systems/just) and a Rust toolchain.
 ### Install a package
 
 ```sh
-jolene install --github <owner/repo> [--to <target>...]
-jolene install --local  <path>       [--to <target>...]
-jolene install --url    <git-url>    [--to <target>...]
+jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix]
 ```
 
 Exactly one of `--github`, `--local`, or `--url` is required. Clones the
 repository and creates symlinks for all supported content. If `--to` is
 omitted, jolene installs to every target whose config directory exists on
 your system.
+
+Use `--prefix <value>` to namespace installed content and avoid name collisions:
+
+```
+$ jolene install --github JuneKelly/co-review --prefix jk --to claude-code
+Installing JuneKelly/co-review...
+  Cloning https://github.com/JuneKelly/co-review.git
+  Found: 1 command
+  Prefix: jk
+
+  Installing to claude-code:
+    + commands/co-review.md -> ~/.claude/commands/jk--co-review.md
+
+Installed JuneKelly/co-review to claude-code
+```
+
+Use `--no-prefix` to suppress a manifest-defined prefix and install flat.
+Package authors can set a default prefix in `jolene.toml` with `prefix = "abc"`
+in the `[package]` table.
 
 ```
 $ jolene install --github JuneKelly/co-review --to claude-code
@@ -58,7 +77,7 @@ Installed JuneKelly/co-review to claude-code
 ### Install from a Claude Code marketplace
 
 ```sh
-jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...]
+jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...] [--prefix <value> | --no-prefix]
 ```
 
 Install individual plugins from a Claude Code marketplace repo. The repo must
@@ -207,6 +226,7 @@ description = "Code review commands and analysis skills"
 version = "1.0.0"
 authors = ["junebug <junebug@example.com>"]
 license = "MIT"
+prefix = "jb"    # optional — default prefix for installed content names
 
 [package.urls]
 repository = "https://github.com/junebug/review-tools"

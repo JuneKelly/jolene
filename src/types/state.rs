@@ -63,6 +63,9 @@ pub struct PackageState {
     /// where the plugin content lives (e.g. "plugins/review-plugin").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_path: Option<String>,
+    /// Install-time prefix applied to content names (e.g. "jb" → "jb--review.md").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
 }
 
 impl PackageState {

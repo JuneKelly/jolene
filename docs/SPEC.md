@@ -55,9 +55,9 @@ In verbose mode, it prints a notice.
 #### Native mode (default)
 
 ```
-jolene install --github <owner/repo> [--to <target>...]
-jolene install --local  <path>       [--to <target>...]
-jolene install --url    <git-url>    [--to <target>...]
+jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix]
 ```
 
 Exactly one of `--github`, `--local`, or `--url` is required.
@@ -67,6 +67,12 @@ Exactly one of `--github`, `--local`, or `--url` is required.
 - `--url <git-url>` — Arbitrary remote git URL.
 - `--to <target>` — Target slug(s). Repeatable. If omitted, installs to all
   targets whose config root directory exists on the system.
+- `--prefix <value>` — Prefix for installed content names. Destination filenames
+  become `{prefix}--{name}` (e.g. `--prefix jb` → `jb--review.md`). A valid
+  prefix matches `[a-z0-9-]+`, is 1-64 characters, and must not start/end with
+  `-` or contain consecutive hyphens `--`.
+- `--no-prefix` — Suppress any manifest-defined prefix; install flat.
+  Mutually exclusive with `--prefix`.
 
 **Process:**
 
@@ -78,7 +84,7 @@ Exactly one of `--github`, `--local`, or `--url` is required.
 #### Marketplace mode (`--marketplace`)
 
 ```
-jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...]
+jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [--to <target>...] [--prefix <value> | --no-prefix]
 ```
 
 - `--marketplace` — Treat the source as a Claude Code marketplace repository
@@ -133,6 +139,23 @@ Installing /Users/you/projects/my-tools...
     + commands/bar.md -> ~/.claude/commands/bar.md
 
 Installed /Users/you/projects/my-tools to claude-code
+```
+
+**Example (prefixed):**
+
+```
+$ jolene install --github junebug/review-tools --prefix jb --to claude-code
+Installing junebug/review-tools...
+  Cloning https://github.com/junebug/review-tools.git
+  Found: 1 command, 2 skills
+  Prefix: jb
+
+  Installing to claude-code:
+    + commands/review.md -> ~/.claude/commands/jb--review.md
+    + skills/code-analysis/ -> ~/.claude/skills/jb--code-analysis/
+    + skills/style-check/ -> ~/.claude/skills/jb--style-check/
+
+Installed junebug/review-tools to claude-code
 ```
 
 **Example (marketplace):**
@@ -318,6 +341,7 @@ description = "Code review commands and analysis skills"
 version = "1.0.0"
 authors = ["junebug <junebug@example.com>"]
 license = "MIT"
+prefix = "jb"    # optional — default prefix for installed content names
 
 [package.urls]
 repository = "https://github.com/junebug/review-tools"
@@ -357,6 +381,7 @@ All three fields are optional, but at least one must be present and non-empty.
 
 | Field                  | Type   | Description                        |
 |------------------------|--------|------------------------------------|
+| `package.prefix`          | string | Default prefix for installed content names. Overridable with `--prefix` / `--no-prefix` at install time. Must match `[a-z0-9-]+`, 1-64 chars, no leading/trailing `-`, no `--`. |
 | `package.urls.repository` | string | Source repository URL.          |
 | `package.urls.homepage`   | string | Project homepage or docs URL.   |
 
@@ -519,6 +544,12 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 | `plugin_name` | The plugin name within the marketplace (e.g. `"review-plugin"`). Enables short-name lookup: `jolene update review-plugin`. |
 | `plugin_path` | For relative plugins, the subdirectory within the clone where content lives (e.g. `"plugins/review-plugin"`). Absent for external plugins. |
 
+**Prefix field** (optional):
+
+| Field    | Description                                                    |
+|----------|----------------------------------------------------------------|
+| `prefix` | The install-time prefix applied to content names (e.g. `"jb"` → `jb--review.md`). Absent when no prefix was used. Locked at install time — `jolene update` preserves the stored prefix. To change prefix, uninstall and reinstall. |
+
 **Store key for marketplace plugins:**
 - **Relative-path plugins** share the marketplace repo's store key. Multiple
   relative plugins from the same marketplace share one clone directory but get
@@ -612,12 +643,17 @@ preventing corruption on interruption.
     - Warn if 'name' or 'description' is missing.
     Frontmatter parsing uses the same rules as skill checks (step 3b).
 
-4. RESOLVE TARGETS
+4. RESOLVE PREFIX
+   - --no-prefix → None (always flat)
+   - --prefix X → Some("X") (validated)
+   - Neither flag → use manifest prefix if present, else None
+
+5. RESOLVE TARGETS
    - If --to specified: use those targets.
    - If --to omitted: detect by checking which config roots exist.
    - If none found: error with guidance to use --to.
 
-5. CHECK CONFLICTS (per target, per content item)
+6. CHECK CONFLICTS (per target, per content item)
    - Destination is a symlink into ~/.jolene/ from a different package:
      → Package conflict. Abort with message naming both packages.
    - Destination is a symlink into ~/.jolene/ from the same package:
@@ -627,16 +663,21 @@ preventing corruption on interruption.
    - Destination does not exist:
      → Proceed.
 
-6. CREATE DIRECTORIES
+7. CREATE DIRECTORIES
    Ensure target content directories exist (mkdir -p).
 
-7. CREATE SYMLINKS
+8. CREATE SYMLINKS
+   - When prefix is active, destination names become {prefix}--{name}:
+     commands/{name}.md → {target}/commands/{prefix}--{name}.md
+     skills/{name}/     → {target}/skills/{prefix}--{name}/
+     agents/{name}.md   → {target}/agents/{prefix}--{name}.md
+   - When no prefix, destination names match the source (current behavior).
    - Commands/Agents: symlink each .md file individually.
    - Skills: symlink each skill directory.
    - All symlinks use absolute paths (no ~, fully expanded).
 
-8. RECORD STATE
-   Write updated state.json (atomic write).
+9. RECORD STATE
+   Write updated state.json (atomic write). Include prefix if set.
 ```
 
 ### Marketplace Install: Step by Step
@@ -796,11 +837,27 @@ Each skill directory is symlinked whole to preserve internal structure:
 ~/.claude/skills/code-analysis/ → /home/user/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/skills/code-analysis/
 ```
 
-### No Namespace Prefix
+### Optional Content Prefix
 
-Symlinks use the original filename from the package. `/review` stays `/review`,
-not `/junebug-review`. This keeps daily usage clean. Conflicts are handled
-explicitly (see Section 7).
+By default, symlinks use the original filename from the package. `/review` stays
+`/review`. When a prefix is active (via `--prefix` CLI flag or the manifest's
+`prefix` field), destination names become `{prefix}--{name}` using a double-hyphen
+separator: `/review` → `/jb--review`.
+
+This is a filename-level convention — not a namespace with scoping or resolution
+rules. The prefix prevents name collisions between packages without requiring
+harness-specific features. The `--` separator was chosen because it:
+- Is visually distinct and unlikely in natural names
+- Is valid in filenames across all platforms
+- Prevents ambiguity (prefixes cannot contain `--`)
+
+Prefix resolution order:
+1. `--no-prefix` → flat (no prefix, regardless of manifest)
+2. `--prefix X` → use X
+3. Neither flag → use manifest `prefix` if set, else flat
+
+The prefix is locked at install time and stored in `state.json`. `jolene update`
+preserves the stored prefix. To change prefix, uninstall and reinstall.
 
 ### Absolute Paths
 

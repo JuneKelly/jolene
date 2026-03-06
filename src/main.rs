@@ -1,11 +1,11 @@
 mod cli;
 mod commands;
 mod config;
+mod content_check;
 mod discovery;
 mod git;
 mod marketplace;
 mod output;
-mod content_check;
 mod state;
 mod symlink;
 mod types;

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 pub fn clone(url: &str, dest: &Path) -> Result<()> {
     if let Some(parent) = dest.parent() {

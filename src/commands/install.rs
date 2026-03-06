@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::Utc;
 
 use crate::cli::InstallArgs;
 use crate::config::clone_root_for;
+use crate::content_check;
 use crate::discovery;
 use crate::git;
 use crate::marketplace::{self, PluginSource};
 use crate::output::Output;
 use crate::state;
-use crate::symlink::{execute_symlinks, plan_symlinks, SymlinkPlan};
-use crate::content_check;
+use crate::symlink::{SymlinkPlan, execute_symlinks, plan_symlinks};
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState, SourceKind};
 use crate::types::target::Target;
-use crate::validation::{collect_content_items, load_manifest, validate_manifest};
+use crate::validation::{collect_content_items, load_manifest, resolve_prefix, validate_manifest};
 
 pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
     let source = if let Some(ref s) = args.github {
@@ -33,18 +33,34 @@ pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
         unreachable!("clap ArgGroup ensures one of --github/--local/--url is set")
     };
 
+    let cli_prefix = args.prefix.as_deref();
+    let cli_no_prefix = args.no_prefix;
+
     if args.marketplace {
-        run_marketplace(&source, &args.to, &args.pick, out)
+        run_marketplace(
+            &source,
+            &args.to,
+            &args.pick,
+            cli_prefix,
+            cli_no_prefix,
+            out,
+        )
     } else {
         if !args.pick.is_empty() {
             out.print("Warning: --pick is ignored without --marketplace");
         }
-        run(&source, &args.to, out)
+        run(&source, &args.to, cli_prefix, cli_no_prefix, out)
     }
 }
 
 /// Native install flow — expects `jolene.toml`.
-pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
+pub fn run(
+    source: &Source,
+    to: &[String],
+    cli_prefix: Option<&str>,
+    cli_no_prefix: bool,
+    out: &Output,
+) -> Result<()> {
     out.print(format!("Installing {}...", source.display()));
 
     // Clone or pull
@@ -66,8 +82,16 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Error: {} {}", source.display(), e))?;
 
     let items = collect_content_items(&manifest);
+    let prefix = resolve_prefix(
+        cli_prefix,
+        cli_no_prefix,
+        manifest.package.prefix.as_deref(),
+    )?;
 
     out.print(format!("  Found: {}", manifest.content.summary()));
+    if let Some(ref p) = prefix {
+        out.print(format!("  Prefix: {}", p));
+    }
 
     // Content quality checks (advisory)
     content_check::check_and_warn_skills(&items, &clone_root, out, "  ");
@@ -84,6 +108,8 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
 
     // Load state early so we can build the hash→display map for conflict messages.
     let mut app_state = state::load()?;
+    check_prefix_mismatch(&app_state, &source.display(), prefix.as_deref())?;
+
     let display_names: HashMap<String, String> = app_state
         .packages
         .iter()
@@ -96,12 +122,19 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
     let store_key = source.store_key();
 
     // Phase 1: check conflicts and collect all plans (no side effects).
-    let (mut staged, targets) =
-        plan_all_targets(&items, &clone_root, &targets, &store_key, &display_names, source, out)?;
+    let (mut staged, targets) = plan_all_targets(
+        &items,
+        &clone_root,
+        &targets,
+        &store_key,
+        &display_names,
+        source,
+        out,
+        prefix.as_deref(),
+    )?;
 
     // Phase 2: execute all plans atomically.
-    let (new_installations, target_names) =
-        execute_and_record(&mut staged, &targets, out)?;
+    let (new_installations, target_names) = execute_and_record(&mut staged, &targets, out)?;
 
     // Record state
     let clone_path = format!("repos/{}", store_key);
@@ -119,6 +152,7 @@ pub fn run(source: &Source, to: &[String], out: &Output) -> Result<()> {
             plugin_name: None,
             plugin_path: None,
             display_override: None,
+            prefix,
         },
     )?;
     state::save(&app_state)?;
@@ -137,6 +171,8 @@ fn run_marketplace(
     source: &Source,
     to: &[String],
     pick: &[String],
+    cli_prefix: Option<&str>,
+    cli_no_prefix: bool,
     out: &Output,
 ) -> Result<()> {
     if pick.is_empty() {
@@ -163,7 +199,9 @@ fn run_marketplace(
     }
 
     // Parse marketplace.json
-    let mp_path = mp_clone_root.join(".claude-plugin").join("marketplace.json");
+    let mp_path = mp_clone_root
+        .join(".claude-plugin")
+        .join("marketplace.json");
     if !mp_path.exists() {
         bail!(
             "No .claude-plugin/marketplace.json found in {}\n  Are you sure this is a marketplace repo?",
@@ -180,6 +218,12 @@ fn run_marketplace(
         bail!(
             "No supported targets detected.\n  None found: ~/.claude/, ~/.config/opencode/, ~/.codex/\n  Use --to <target> to specify a target explicitly."
         );
+    }
+
+    // Resolve prefix from CLI flags (marketplace has no manifest prefix).
+    let prefix = resolve_prefix(cli_prefix, cli_no_prefix, None)?;
+    if let Some(ref p) = prefix {
+        out.print(format!("  Prefix: {}", p));
     }
 
     // Load state once before processing all plugins.
@@ -209,6 +253,8 @@ fn run_marketplace(
         let resolved =
             resolve_plugin_source(&entry.source, &mp_clone_root, &entry.name, source, out)?;
 
+        check_prefix_mismatch(&app_state, &resolved.display_name, prefix.as_deref())?;
+
         // Check for ignored features
         let ignored = marketplace::detect_ignored_features(&resolved.dir);
         if ignored.any() {
@@ -228,10 +274,7 @@ fn run_marketplace(
             continue;
         }
 
-        out.print(format!(
-            "    Found: {}",
-            discovery::content_summary(&items)
-        ));
+        out.print(format!("    Found: {}", discovery::content_summary(&items)));
 
         // Content quality checks (advisory)
         content_check::check_and_warn_skills(&items, &resolved.dir, out, "    ");
@@ -256,9 +299,11 @@ fn run_marketplace(
             &display_names,
             &resolved.source,
             out,
+            prefix.as_deref(),
         )?;
 
-        let (new_installations, target_names) = execute_and_record(&mut staged, &targets_used, out)?;
+        let (new_installations, target_names) =
+            execute_and_record(&mut staged, &targets_used, out)?;
 
         let clone_path = format!("repos/{}", resolved.store_key);
 
@@ -275,6 +320,7 @@ fn run_marketplace(
                 plugin_name: Some(entry.name.clone()),
                 plugin_path: resolved.plugin_path,
                 display_override: Some(resolved.display_name),
+                prefix: prefix.clone(),
             },
         )?;
 
@@ -410,6 +456,7 @@ fn plan_all_targets(
     display_names: &HashMap<String, String>,
     source: &Source,
     out: &Output,
+    prefix: Option<&str>,
 ) -> Result<(Vec<TargetStage>, Vec<Target>)> {
     let mut staged: Vec<TargetStage> = Vec::new();
     let mut used_targets: Vec<Target> = Vec::new();
@@ -462,6 +509,7 @@ fn plan_all_targets(
             target.slug(),
             store_key,
             display_names,
+            prefix,
         )
         .map_err(|e| {
             anyhow::anyhow!(
@@ -526,6 +574,7 @@ struct StateRecord {
     /// Override the display name used as the `source` field in PackageState.
     /// When None, uses `source.display()`.
     display_override: Option<String>,
+    prefix: Option<String>,
 }
 
 fn record_state(
@@ -556,6 +605,7 @@ fn record_state(
             if record.plugin_path.is_some() {
                 existing.plugin_path = record.plugin_path;
             }
+            existing.prefix = record.prefix;
             for inst in new_installations {
                 if let Some(existing_inst) = existing
                     .installations
@@ -586,10 +636,35 @@ fn record_state(
                 marketplace: record.marketplace,
                 plugin_name: record.plugin_name,
                 plugin_path: record.plugin_path,
+                prefix: record.prefix,
             });
         }
     }
 
+    Ok(())
+}
+
+/// Error if the package is already installed with a different prefix.
+fn check_prefix_mismatch(
+    app_state: &crate::types::state::State,
+    display_name: &str,
+    new_prefix: Option<&str>,
+) -> Result<()> {
+    if let Some(existing) = state::find_package(app_state, display_name)? {
+        let old = existing.prefix.as_deref();
+        if old != new_prefix {
+            let fmt = |p: Option<&str>| match p {
+                Some(v) => format!("'{}'", v),
+                None => "none".to_string(),
+            };
+            bail!(
+                "Package '{}' is already installed with prefix {}.\n  To change prefix, uninstall first:\n    jolene uninstall {}",
+                display_name,
+                fmt(old),
+                display_name,
+            );
+        }
+    }
     Ok(())
 }
 

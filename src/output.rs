@@ -24,5 +24,4 @@ impl Output {
             println!("{msg}");
         }
     }
-
 }

@@ -25,7 +25,11 @@ pub fn run(target: Option<&str>, out: &Output) -> Result<()> {
     out.print("Installed packages:\n");
 
     for pkg in packages {
-        let target_names: Vec<_> = pkg.installations.iter().map(|i| i.target.as_str()).collect();
+        let target_names: Vec<_> = pkg
+            .installations
+            .iter()
+            .map(|i| i.target.as_str())
+            .collect();
 
         let content_summary = clone_root_for(&pkg.clone_path)
             .ok()
@@ -36,6 +40,9 @@ pub fn run(target: Option<&str>, out: &Output) -> Result<()> {
 
         out.print(format!("  {}", pkg.source));
         out.print(format!("    Source:  {}", pkg.source_kind));
+        if let Some(ref prefix) = pkg.prefix {
+            out.print(format!("    Prefix:  {}", prefix));
+        }
         out.print(format!("    Targets: {}", target_names.join(", ")));
         out.print(format!("    Content: {}", content_summary));
         out.print(format!("    Version: ({}@{})\n", pkg.branch, short));

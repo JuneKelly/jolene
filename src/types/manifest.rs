@@ -16,6 +16,8 @@ pub struct Package {
     pub authors: Vec<String>,
     pub license: String,
     pub urls: Option<Urls>,
+    /// Optional prefix for content names (e.g. `prefix = "jb"` → `jb--review.md`).
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,7 +48,11 @@ impl ContentDecl {
         let mut parts = Vec::new();
         if !self.commands.is_empty() {
             let n = self.commands.len();
-            parts.push(format!("{} {}", n, if n == 1 { "command" } else { "commands" }));
+            parts.push(format!(
+                "{} {}",
+                n,
+                if n == 1 { "command" } else { "commands" }
+            ));
         }
         if !self.skills.is_empty() {
             let n = self.skills.len();
@@ -108,7 +114,10 @@ mod tests {
 
     #[test]
     fn summary_plural_commands() {
-        assert_eq!(decl(&["review", "deploy"], &[], &[]).summary(), "2 commands");
+        assert_eq!(
+            decl(&["review", "deploy"], &[], &[]).summary(),
+            "2 commands"
+        );
     }
 
     #[test]

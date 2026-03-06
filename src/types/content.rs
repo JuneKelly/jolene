@@ -67,16 +67,21 @@ impl ContentItem {
     }
 
     /// The filename or directory name to use at the destination (no extension for skills).
-    pub fn dest_name(&self) -> String {
+    /// When a prefix is active, the name becomes `{prefix}--{name}` (e.g. "jb--review.md").
+    pub fn dest_name(&self, prefix: Option<&str>) -> String {
+        let name = match prefix {
+            Some(p) => format!("{p}--{}", self.name),
+            None => self.name.clone(),
+        };
         match self.content_type {
-            ContentType::Command | ContentType::Agent => format!("{}.md", self.name),
-            ContentType::Skill => self.name.clone(),
+            ContentType::Command | ContentType::Agent => format!("{name}.md"),
+            ContentType::Skill => name,
         }
     }
 
     /// Absolute destination path given the target content directory.
-    pub fn dest_path(&self, content_dir: &Path) -> PathBuf {
-        content_dir.join(self.dest_name())
+    pub fn dest_path(&self, content_dir: &Path, prefix: Option<&str>) -> PathBuf {
+        content_dir.join(self.dest_name(prefix))
     }
 }
 
@@ -105,19 +110,19 @@ mod tests {
     #[test]
     fn command_dest_name_has_md_extension() {
         let item = ContentItem::new(ContentType::Command, "deploy");
-        assert_eq!(item.dest_name(), "deploy.md");
+        assert_eq!(item.dest_name(None), "deploy.md");
     }
 
     #[test]
     fn skill_dest_name_has_no_extension() {
         let item = ContentItem::new(ContentType::Skill, "style-check");
-        assert_eq!(item.dest_name(), "style-check");
+        assert_eq!(item.dest_name(None), "style-check");
     }
 
     #[test]
     fn agent_dest_name_has_md_extension() {
         let item = ContentItem::new(ContentType::Agent, "reviewer");
-        assert_eq!(item.dest_name(), "reviewer.md");
+        assert_eq!(item.dest_name(None), "reviewer.md");
     }
 
     #[test]
@@ -126,9 +131,7 @@ mod tests {
         let root = Path::new("/home/user/.jolene/repos/junebug/review-tools");
         assert_eq!(
             item.source_path(root),
-            PathBuf::from(
-                "/home/user/.jolene/repos/junebug/review-tools/commands/review.md"
-            )
+            PathBuf::from("/home/user/.jolene/repos/junebug/review-tools/commands/review.md")
         );
     }
 
@@ -137,8 +140,44 @@ mod tests {
         let item = ContentItem::new(ContentType::Skill, "code-analysis");
         let content_dir = Path::new("/home/user/.claude/skills");
         assert_eq!(
-            item.dest_path(content_dir),
+            item.dest_path(content_dir, None),
             PathBuf::from("/home/user/.claude/skills/code-analysis")
+        );
+    }
+
+    // Prefix tests
+
+    #[test]
+    fn prefixed_command_dest_name() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        assert_eq!(item.dest_name(Some("acme")), "acme--review.md");
+    }
+
+    #[test]
+    fn prefixed_skill_dest_name() {
+        let item = ContentItem::new(ContentType::Skill, "code-analysis");
+        assert_eq!(item.dest_name(Some("acme")), "acme--code-analysis");
+    }
+
+    #[test]
+    fn prefixed_agent_dest_name() {
+        let item = ContentItem::new(ContentType::Agent, "reviewer");
+        assert_eq!(item.dest_name(Some("acme")), "acme--reviewer.md");
+    }
+
+    #[test]
+    fn no_prefix_dest_name_unchanged() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        assert_eq!(item.dest_name(None), "review.md");
+    }
+
+    #[test]
+    fn prefixed_dest_path() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        let content_dir = Path::new("/home/user/.claude/commands");
+        assert_eq!(
+            item.dest_path(content_dir, Some("acme")),
+            PathBuf::from("/home/user/.claude/commands/acme--review.md")
         );
     }
 }
