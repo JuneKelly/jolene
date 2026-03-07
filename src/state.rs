@@ -1,5 +1,6 @@
-use std::fs::File;
+use std::fs::{File, Permissions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result, bail};
 use tempfile::NamedTempFile;
@@ -77,6 +78,9 @@ pub fn save(state: &State) -> Result<()> {
     let mut tmp = NamedTempFile::new_in(dir).context("Failed to create temp file for state")?;
     tmp.write_all(text.as_bytes())
         .context("Failed to write state to temp file")?;
+    tmp.as_file()
+        .set_permissions(Permissions::from_mode(0o600))
+        .context("Failed to set state file permissions")?;
     tmp.persist(&path)
         .with_context(|| format!("Failed to persist state file to {}", path.display()))?;
 
