@@ -28,6 +28,12 @@ pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
             .with_context(|| format!("Cannot access local path: {}", path.display()))?;
         Source::Local(abs)
     } else if let Some(ref url) = args.url {
+        if url.starts_with('/') || url.starts_with('.') {
+            bail!(
+                "--url does not accept local filesystem paths.\n  Use --local instead: jolene install --local {}",
+                url
+            );
+        }
         Source::Url(url.clone())
     } else {
         unreachable!("clap ArgGroup ensures one of --github/--local/--url is set")
@@ -106,8 +112,9 @@ pub fn run(
         );
     }
 
-    // Load state early so we can build the hash→display map for conflict messages.
-    let mut app_state = state::load()?;
+    // Acquire lock and load state together to prevent concurrent modifications
+    // and ensure state is never read without holding the lock.
+    let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
     check_prefix_mismatch(&app_state, &source.display(), prefix.as_deref())?;
 
     let display_names: HashMap<String, String> = app_state
@@ -226,8 +233,8 @@ fn run_marketplace(
         out.print(format!("  Prefix: {}", p));
     }
 
-    // Load state once before processing all plugins.
-    let mut app_state = state::load()?;
+    // Acquire lock and load state together.
+    let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
 
     // Process each picked plugin
     for plugin_name in pick {

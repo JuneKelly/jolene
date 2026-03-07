@@ -24,7 +24,15 @@ pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
             .with_context(|| format!("Cannot access local path: {}", path.display()))?;
         Some(Source::Local(abs))
     } else {
-        args.url.as_ref().map(|url| Source::Url(url.clone()))
+        args.url.as_ref().map(|url| {
+            if url.starts_with('/') || url.starts_with('.') {
+                bail!(
+                    "--url does not accept local filesystem paths.\n  Use --local instead: jolene contents --local {}",
+                    url
+                );
+            }
+            Ok(Source::Url(url.clone()))
+        }).transpose()?
     };
 
     let Some(source) = source else {

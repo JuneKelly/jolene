@@ -1,10 +1,49 @@
+use std::fs::{File, Permissions};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result, bail};
 use tempfile::NamedTempFile;
 
 use crate::config::{jolene_root, legacy_state_file, state_file};
 use crate::types::state::{PackageState, State};
+
+/// Advisory file lock for serializing concurrent jolene processes.
+///
+/// Acquires an exclusive lock on `~/.jolene/.lock` via `File::lock()`.
+/// The lock is released when this value is dropped (file close releases it).
+pub struct StateLock {
+    _file: File,
+}
+
+impl StateLock {
+    pub fn acquire() -> Result<Self> {
+        let root = jolene_root()?;
+        std::fs::create_dir_all(&root)
+            .with_context(|| format!("Failed to create jolene directory {}", root.display()))?;
+
+        let lock_path = root.join(".lock");
+        let file = File::create(&lock_path)
+            .with_context(|| format!("Failed to create lock file {}", lock_path.display()))?;
+        file.set_permissions(Permissions::from_mode(0o600))
+            .with_context(|| format!("Failed to set lock file permissions {}", lock_path.display()))?;
+
+        file.lock()
+            .context("Failed to acquire state lock")?;
+
+        Ok(StateLock { _file: file })
+    }
+
+    /// Acquire the lock and load state atomically.
+    ///
+    /// Prefer this over separate `acquire()` + `load()` calls for mutating
+    /// commands to ensure state is never loaded without holding the lock.
+    pub fn acquire_and_load() -> Result<(Self, State)> {
+        let lock = Self::acquire()?;
+        let state = load()?;
+        Ok((lock, state))
+    }
+}
 
 pub fn load() -> Result<State> {
     let path = state_file()?;
@@ -51,6 +90,9 @@ pub fn save(state: &State) -> Result<()> {
     let mut tmp = NamedTempFile::new_in(dir).context("Failed to create temp file for state")?;
     tmp.write_all(text.as_bytes())
         .context("Failed to write state to temp file")?;
+    tmp.as_file()
+        .set_permissions(Permissions::from_mode(0o600))
+        .context("Failed to set state file permissions")?;
     tmp.persist(&path)
         .with_context(|| format!("Failed to persist state file to {}", path.display()))?;
 

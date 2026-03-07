@@ -5,6 +5,32 @@ use anyhow::{Context, Result, bail};
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::manifest::Manifest;
 
+/// Validate that a content name is a safe, simple filename component.
+///
+/// Rejects names containing path separators (`/`, `\`), parent-directory
+/// traversal (`..`), or the current-directory marker (`.`). This prevents
+/// path traversal when names are joined into filesystem paths.
+pub fn validate_content_name(name: &str, kind: &str) -> Result<()> {
+    if name.is_empty() {
+        bail!("Invalid jolene.toml: {} name must not be empty", kind);
+    }
+    if name.contains('/') || name.contains('\\') {
+        bail!(
+            "Invalid jolene.toml: {} name '{}' must not contain path separators",
+            kind,
+            name
+        );
+    }
+    if name == "." || name == ".." || name.contains("..") {
+        bail!(
+            "Invalid jolene.toml: {} name '{}' must not contain path traversal",
+            kind,
+            name
+        );
+    }
+    Ok(())
+}
+
 /// Validate a prefix string for use in content name prefixing.
 ///
 /// A valid prefix must:
@@ -91,6 +117,7 @@ pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
     }
 
     for name in &manifest.content.commands {
+        validate_content_name(name, "command")?;
         let path = clone_root.join("commands").join(format!("{}.md", name));
         if !path.exists() {
             bail!(
@@ -102,6 +129,7 @@ pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
     }
 
     for name in &manifest.content.skills {
+        validate_content_name(name, "skill")?;
         let skill_dir = clone_root.join("skills").join(name);
         if !skill_dir.exists() {
             bail!(
@@ -117,6 +145,7 @@ pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
     }
 
     for name in &manifest.content.agents {
+        validate_content_name(name, "agent")?;
         let path = clone_root.join("agents").join(format!("{}.md", name));
         if !path.exists() {
             bail!(
@@ -149,6 +178,56 @@ pub fn collect_content_items(manifest: &Manifest) -> Vec<ContentItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // validate_content_name tests
+
+    #[test]
+    fn content_name_valid_simple() {
+        assert!(validate_content_name("review", "command").is_ok());
+    }
+
+    #[test]
+    fn content_name_valid_with_hyphens() {
+        assert!(validate_content_name("code-review", "command").is_ok());
+    }
+
+    #[test]
+    fn content_name_rejects_empty() {
+        let err = validate_content_name("", "command").unwrap_err();
+        assert!(err.to_string().contains("must not be empty"));
+    }
+
+    #[test]
+    fn content_name_rejects_forward_slash() {
+        let err = validate_content_name("../etc/passwd", "command").unwrap_err();
+        assert!(err.to_string().contains("path separators"));
+    }
+
+    #[test]
+    fn content_name_rejects_backslash() {
+        let err = validate_content_name("foo\\bar", "skill").unwrap_err();
+        assert!(err.to_string().contains("path separators"));
+    }
+
+    #[test]
+    fn content_name_rejects_dot_dot() {
+        let err = validate_content_name("..", "agent").unwrap_err();
+        assert!(err.to_string().contains("path traversal"));
+    }
+
+    #[test]
+    fn content_name_rejects_dot() {
+        let err = validate_content_name(".", "command").unwrap_err();
+        assert!(err.to_string().contains("path traversal"));
+    }
+
+    #[test]
+    fn content_name_rejects_embedded_dot_dot() {
+        let err = validate_content_name("foo..bar", "command").unwrap_err();
+        assert!(err.to_string().contains("path traversal"));
+    }
+
+    // validate_prefix tests
 
     #[test]
     fn valid_simple() {
