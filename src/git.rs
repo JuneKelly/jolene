@@ -8,10 +8,10 @@ const ALLOWED_SCHEMES: &[&str] = &["https://", "http://", "git://", "ssh://", "g
 /// Validate that a git URL uses an allowed scheme.
 ///
 /// Accepts `https://`, `http://`, `git://`, `ssh://`, and `git@` (SCP-style).
-/// Also accepts bare filesystem paths (for local clones).
+/// Also accepts absolute filesystem paths (for `Source::Local` after canonicalize).
 pub fn validate_url(url: &str) -> Result<()> {
-    // Local filesystem paths are always valid (used by Source::Local).
-    if url.starts_with('/') || url.starts_with('.') {
+    // Absolute filesystem paths are valid (used by Source::Local after canonicalize).
+    if url.starts_with('/') {
         return Ok(());
     }
 
@@ -135,8 +135,15 @@ mod tests {
     }
 
     #[test]
-    fn accepts_local_relative_path() {
-        assert!(validate_url("./my-repo").is_ok());
+    fn rejects_relative_path() {
+        let err = validate_url("./my-repo").unwrap_err();
+        assert!(err.to_string().contains("Unsupported git URL scheme"));
+    }
+
+    #[test]
+    fn rejects_dotdot_relative_path() {
+        let err = validate_url("../my-repo").unwrap_err();
+        assert!(err.to_string().contains("Unsupported git URL scheme"));
     }
 
     #[test]
