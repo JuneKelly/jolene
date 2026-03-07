@@ -28,6 +28,12 @@ pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
             .with_context(|| format!("Cannot access local path: {}", path.display()))?;
         Source::Local(abs)
     } else if let Some(ref url) = args.url {
+        if url.starts_with('/') || url.starts_with('.') {
+            bail!(
+                "--url does not accept local filesystem paths.\n  Use --local instead: jolene install --local {}",
+                url
+            );
+        }
         Source::Url(url.clone())
     } else {
         unreachable!("clap ArgGroup ensures one of --github/--local/--url is set")
