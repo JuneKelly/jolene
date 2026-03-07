@@ -22,6 +22,20 @@ Marketplace (Claude Code plugin repos):
   Browse plugins:       jolene contents --marketplace --github org/tools
   Install a plugin:     jolene install --marketplace --github org/tools --pick review
 
+Prefixes:
+
+  Prefixes namespace installed content to avoid conflicts between
+  packages. A prefix is joined to the content name with '--':
+
+    --prefix jb           jb--review.md, jb--refactor.md
+    --no-prefix           strip any manifest-defined prefix
+    (no flag)             use the prefix from jolene.toml, if any
+
+  Prefix rules: lowercase letters, digits, and hyphens only; no
+  leading/trailing hyphens; no consecutive hyphens; max 64 chars.
+  A manifest can set a default prefix in [package]: prefix = \"jb\".
+  The --prefix flag overrides the manifest; --no-prefix suppresses it.
+
 A package is a git repo with a jolene.toml manifest containing
 commands/, skills/, and/or agents/ that get symlinked into your
 coding tool's config directory. Marketplace repos use
