@@ -137,6 +137,15 @@ pub fn execute_symlinks(plans: &[SymlinkPlan]) -> Result<Vec<SymlinkEntry>> {
         if let Some(parent) = plan.dst.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+
+            // Verify the parent directory wasn't replaced with a symlink
+            // between creation and use (TOCTOU mitigation).
+            if parent.is_symlink() {
+                bail!(
+                    "Directory {} is a symlink, which is unexpected. Refusing to create symlink inside it.",
+                    parent.display()
+                );
+            }
         }
 
         if let Err(e) = unix_fs::symlink(&plan.src, &plan.dst) {
