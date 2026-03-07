@@ -8,6 +8,7 @@ mod marketplace;
 mod output;
 mod state;
 mod symlink;
+mod template;
 mod types;
 mod validation;
 

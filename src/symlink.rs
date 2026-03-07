@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 use crate::config::{display_path, jolene_root};
-use crate::types::content::ContentItem;
+use crate::types::content::{ContentItem, ContentType};
 use crate::types::state::SymlinkEntry;
 
 pub enum ConflictCheck {
@@ -51,13 +51,20 @@ pub fn is_jolene_symlink(target: &Path) -> Result<bool> {
     Ok(target.starts_with(&root))
 }
 
-/// Extract the 64-char store-key hash from a path like ~/.jolene/repos/{hash}/...
+/// Extract the 64-char store-key hash from a path like
+/// `~/.jolene/repos/{hash}/...` or `~/.jolene/built/{hash}/...`.
 pub fn package_from_symlink(target: &Path) -> Option<String> {
     let root = jolene_root().ok()?;
-    let repos = root.join("repos");
-    let rel = target.strip_prefix(&repos).ok()?;
-    let hash = rel.components().next()?.as_os_str().to_str()?;
-    Some(hash.to_string())
+    // Try repos/ first, then built/
+    for dir_name in &["repos", "built"] {
+        let dir = root.join(dir_name);
+        if let Ok(rel) = target.strip_prefix(&dir) {
+            if let Some(hash) = rel.components().next()?.as_os_str().to_str() {
+                return Some(hash.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// A planned symlink operation.
@@ -69,11 +76,29 @@ pub struct SymlinkPlan {
     pub relative_src: String,
 }
 
+/// Resolve the actual source path for a content item, preferring the build
+/// directory if a built version exists.
+fn resolve_source(item: &ContentItem, clone_root: &Path, build_dir: Option<&Path>) -> PathBuf {
+    if let Some(bd) = build_dir {
+        let built_path = match item.content_type {
+            ContentType::Command | ContentType::Agent => bd.join(item.relative_path()),
+            ContentType::Skill => bd.join(item.relative_path()),
+        };
+        if built_path.exists() {
+            return built_path;
+        }
+    }
+    item.source_path(clone_root)
+}
+
 /// Build the symlink plan for a set of content items, checking for conflicts.
 /// Returns an error on the first conflict encountered.
 ///
 /// `display_names` maps store-key hashes to human-readable package names
 /// for use in conflict error messages.
+///
+/// When `build_dir` is `Some`, templated files are sourced from the build
+/// directory instead of the clone root.
 pub fn plan_symlinks(
     items: &[ContentItem],
     clone_root: &Path,
@@ -82,11 +107,12 @@ pub fn plan_symlinks(
     package_source: &str,
     display_names: &HashMap<String, String>,
     prefix: Option<&str>,
+    build_dir: Option<&Path>,
 ) -> Result<Vec<SymlinkPlan>> {
     let mut plans = Vec::new();
 
     for item in items {
-        let src = item.source_path(clone_root);
+        let src = resolve_source(item, clone_root, build_dir);
         let content_dir = target_root.join(item.content_type.dir_name());
         let dst = item.dest_path(&content_dir, prefix);
         let relative_src = item.relative_path().to_string_lossy().into_owned();

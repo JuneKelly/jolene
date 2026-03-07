@@ -808,3 +808,285 @@ fn update_preserves_prefix() {
             .unwrap();
     assert_eq!(state["packages"][0]["prefix"], "abc");
 }
+
+// --- Template tests ---
+
+/// Create a test package with two commands where one references the other via template.
+fn create_templated_package(dir: &Path) {
+    fs::create_dir_all(dir.join("commands")).unwrap();
+    fs::write(
+        dir.join("jolene.toml"),
+        r#"[package]
+name = "template-pkg"
+description = "A package with templates"
+version = "0.1.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["review", "deploy"]
+"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.join("commands/review.md"),
+        "# Review\nAfter review, use %{jolene:command:deploy} to deploy.\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("commands/deploy.md"),
+        "# Deploy\nA deploy command.\n",
+    )
+    .unwrap();
+
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .expect("git command failed")
+    };
+    run(&["init", "-b", "main"]);
+    run(&["add", "."]);
+    run(&["commit", "-m", "init"]);
+}
+
+#[test]
+fn install_templated_package_with_prefix() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_templated_package(pkg_dir.path());
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+            "--prefix",
+            "xyz",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rendered 1 templated file(s)"));
+
+    // The templated command (review) should have rendered content
+    let review_symlink = claude_root.join("commands").join("xyz--review.md");
+    assert!(review_symlink.is_symlink(), "review symlink should exist");
+
+    // Read the content through the symlink — should have resolved template
+    let content = fs::read_to_string(&review_symlink).unwrap();
+    assert!(
+        content.contains("xyz--deploy"),
+        "template should resolve to prefixed name, got: {}",
+        content
+    );
+    assert!(
+        !content.contains("%{jolene:"),
+        "no unresolved templates should remain"
+    );
+
+    // The non-templated command (deploy) should point directly to repos/
+    let deploy_symlink = claude_root.join("commands").join("xyz--deploy.md");
+    assert!(deploy_symlink.is_symlink(), "deploy symlink should exist");
+    let deploy_target = fs::read_link(&deploy_symlink).unwrap();
+    assert!(
+        deploy_target
+            .to_string_lossy()
+            .contains("/repos/"),
+        "non-templated file should point to repos/, got: {}",
+        deploy_target.display()
+    );
+
+    // The templated command should point to built/
+    let review_target = fs::read_link(&review_symlink).unwrap();
+    assert!(
+        review_target
+            .to_string_lossy()
+            .contains("/built/"),
+        "templated file should point to built/, got: {}",
+        review_target.display()
+    );
+
+    // built/ directory should exist
+    let built_dir = jolene_root.path().join("built");
+    assert!(built_dir.exists(), "built/ directory should exist");
+}
+
+#[test]
+fn install_templated_package_without_prefix() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_templated_package(pkg_dir.path());
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    let review_symlink = claude_root.join("commands").join("review.md");
+    assert!(review_symlink.is_symlink());
+    let content = fs::read_to_string(&review_symlink).unwrap();
+    assert!(
+        content.contains("deploy"),
+        "template should resolve to bare name"
+    );
+    assert!(
+        !content.contains("%{jolene:"),
+        "no unresolved templates"
+    );
+}
+
+#[test]
+fn non_templated_package_has_no_build_dir() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_test_package(pkg_dir.path(), "plain");
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    let built_dir = jolene_root.path().join("built");
+    assert!(
+        !built_dir.exists(),
+        "built/ directory should not exist for non-templated packages"
+    );
+}
+
+#[test]
+fn uninstall_templated_package_cleans_build_dir() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_templated_package(pkg_dir.path());
+
+    // Install
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+            "--prefix",
+            "xyz",
+        ])
+        .assert()
+        .success();
+
+    let built_dir = jolene_root.path().join("built");
+    assert!(built_dir.exists(), "built/ should exist after install");
+
+    // Get source name for uninstall
+    let state: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
+            .unwrap();
+    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+
+    // Uninstall
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["uninstall", &source, "--from", "claude-code"])
+        .assert()
+        .success();
+
+    // built/ should be cleaned up (or the specific store key subdir)
+    // The built dir itself may still exist but should have no subdirs for this package
+    let review_symlink = claude_root.join("commands").join("xyz--review.md");
+    assert!(
+        !review_symlink.exists() && !review_symlink.is_symlink(),
+        "symlinks should be removed"
+    );
+}
+
+#[test]
+fn invalid_template_reference_fails_install() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+
+    // Create a package with an invalid template reference
+    fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
+    fs::write(
+        pkg_dir.path().join("jolene.toml"),
+        r#"[package]
+name = "bad-template-pkg"
+description = "A package with bad templates"
+version = "0.1.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["review"]
+"#,
+    )
+    .unwrap();
+    fs::write(
+        pkg_dir.path().join("commands/review.md"),
+        "# Review\nUse %{jolene:command:nonexistent} for things.\n",
+    )
+    .unwrap();
+
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(pkg_dir.path())
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .expect("git command failed")
+    };
+    run(&["init", "-b", "main"]);
+    run(&["add", "."]);
+    run(&["commit", "-m", "init"]);
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("nonexistent"));
+}

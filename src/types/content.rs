@@ -83,6 +83,18 @@ impl ContentItem {
     pub fn dest_path(&self, content_dir: &Path, prefix: Option<&str>) -> PathBuf {
         content_dir.join(self.dest_name(prefix))
     }
+
+    /// The installed reference name used in template resolution.
+    ///
+    /// For commands/agents: `"{prefix}--{name}"` (no `.md` extension) since users
+    /// reference commands by bare name (e.g. `/xyz--review`).
+    /// For skills: same logic (already no extension).
+    pub fn installed_ref_name(&self, prefix: Option<&str>) -> String {
+        match prefix {
+            Some(p) => format!("{p}--{}", self.name),
+            None => self.name.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -169,6 +181,24 @@ mod tests {
     fn no_prefix_dest_name_unchanged() {
         let item = ContentItem::new(ContentType::Command, "review");
         assert_eq!(item.dest_name(None), "review.md");
+    }
+
+    #[test]
+    fn installed_ref_name_with_prefix() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        assert_eq!(item.installed_ref_name(Some("acme")), "acme--review");
+    }
+
+    #[test]
+    fn installed_ref_name_without_prefix() {
+        let item = ContentItem::new(ContentType::Command, "review");
+        assert_eq!(item.installed_ref_name(None), "review");
+    }
+
+    #[test]
+    fn installed_ref_name_skill() {
+        let item = ContentItem::new(ContentType::Skill, "analysis");
+        assert_eq!(item.installed_ref_name(Some("abc")), "abc--analysis");
     }
 
     #[test]

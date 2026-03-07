@@ -10,6 +10,7 @@ use crate::git;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{SymlinkPlan, execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
+use crate::template;
 use crate::types::content::ContentItem;
 use crate::types::content::ContentType;
 use crate::types::state::State;
@@ -88,6 +89,23 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     content_check::check_and_warn_skills(&items, &content_dir, out, "  ");
     content_check::check_and_warn_agents(&items, &content_dir, out, "  ");
 
+    // Template processing — re-render from scratch on every update
+    let templated_files = template::needs_templating(&items, &content_dir)?;
+    let build_dir = if !templated_files.is_empty() {
+        let ctx = template::TemplateContext::build(&items, prefix.as_deref());
+        let bd = template::build_dir_for(&store_key)?;
+        template::build_templated_files(&templated_files, &content_dir, &bd, &ctx)?;
+        out.print(format!(
+            "  Rendered {} templated file(s)",
+            templated_files.len()
+        ));
+        Some(bd)
+    } else {
+        // Clean up any leftover build dir from a previous version that had templates
+        let _ = template::clean_build_dir(&store_key);
+        None
+    };
+
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
 
@@ -148,6 +166,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             &store_key,
             &display_names,
             prefix.as_deref(),
+            build_dir.as_deref(),
         )?;
 
         let removals: Vec<String> = inst

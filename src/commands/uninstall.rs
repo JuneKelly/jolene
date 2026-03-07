@@ -4,6 +4,7 @@ use crate::config::jolene_root;
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{expand_tilde, remove_symlink};
+use crate::template;
 use crate::types::target::Target;
 
 pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<()> {
@@ -81,8 +82,11 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
 
     let remove_package = pkg_mut.installations.is_empty();
     let clone_path = pkg_mut.clone_path.clone();
+    let store_key = pkg_mut.store_key().to_owned();
 
     if remove_package {
+        // Clean up build directory for templated packages
+        let _ = template::clean_build_dir(&store_key);
         app_state.packages.retain(|p| p.source != source);
     }
 

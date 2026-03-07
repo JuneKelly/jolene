@@ -13,6 +13,7 @@ use crate::marketplace::{self, PluginSource};
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{SymlinkPlan, execute_symlinks, plan_symlinks};
+use crate::template;
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState, SourceKind};
@@ -103,6 +104,21 @@ pub fn run(
     content_check::check_and_warn_skills(&items, &clone_root, out, "  ");
     content_check::check_and_warn_agents(&items, &clone_root, out, "  ");
 
+    // Template processing
+    let templated_files = template::needs_templating(&items, &clone_root)?;
+    let build_dir = if !templated_files.is_empty() {
+        let ctx = template::TemplateContext::build(&items, prefix.as_deref());
+        let bd = template::build_dir_for(&source.store_key())?;
+        template::build_templated_files(&templated_files, &clone_root, &bd, &ctx)?;
+        out.print(format!(
+            "  Rendered {} templated file(s)",
+            templated_files.len()
+        ));
+        Some(bd)
+    } else {
+        None
+    };
+
     // Resolve targets
     let targets = resolve_targets(to)?;
 
@@ -138,6 +154,7 @@ pub fn run(
         source,
         out,
         prefix.as_deref(),
+        build_dir.as_deref(),
     )?;
 
     // Phase 2: execute all plans atomically.
@@ -287,6 +304,21 @@ fn run_marketplace(
         content_check::check_and_warn_skills(&items, &resolved.dir, out, "    ");
         content_check::check_and_warn_agents(&items, &resolved.dir, out, "    ");
 
+        // Template processing
+        let templated_files = template::needs_templating(&items, &resolved.dir)?;
+        let build_dir = if !templated_files.is_empty() {
+            let ctx = template::TemplateContext::build(&items, prefix.as_deref());
+            let bd = template::build_dir_for(&resolved.store_key)?;
+            template::build_templated_files(&templated_files, &resolved.dir, &bd, &ctx)?;
+            out.print(format!(
+                "    Rendered {} templated file(s)",
+                templated_files.len()
+            ));
+            Some(bd)
+        } else {
+            None
+        };
+
         // Rebuild display_names each iteration so cross-plugin conflicts are caught.
         let display_names: HashMap<String, String> = app_state
             .packages
@@ -307,6 +339,7 @@ fn run_marketplace(
             &resolved.source,
             out,
             prefix.as_deref(),
+            build_dir.as_deref(),
         )?;
 
         let (new_installations, target_names) =
@@ -464,6 +497,7 @@ fn plan_all_targets(
     source: &Source,
     out: &Output,
     prefix: Option<&str>,
+    build_dir: Option<&Path>,
 ) -> Result<(Vec<TargetStage>, Vec<Target>)> {
     let mut staged: Vec<TargetStage> = Vec::new();
     let mut used_targets: Vec<Target> = Vec::new();
@@ -517,6 +551,7 @@ fn plan_all_targets(
             store_key,
             display_names,
             prefix,
+            build_dir,
         )
         .map_err(|e| {
             anyhow::anyhow!(
