@@ -25,6 +25,8 @@ impl StateLock {
         let lock_path = root.join(".lock");
         let file = File::create(&lock_path)
             .with_context(|| format!("Failed to create lock file {}", lock_path.display()))?;
+        file.set_permissions(Permissions::from_mode(0o600))
+            .with_context(|| format!("Failed to set lock file permissions {}", lock_path.display()))?;
 
         file.lock()
             .context("Failed to acquire state lock")?;
