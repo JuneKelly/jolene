@@ -600,6 +600,16 @@ The 64-character hex digest is used as the directory name under `repos/`.
 **Atomicity:** The state file is written to a temp file then renamed,
 preventing corruption on interruption.
 
+**Concurrency:** Jolene uses advisory file locking (`flock(2)` on
+`~/.jolene/.lock`) to serialize state-mutating commands (`install`,
+`uninstall`, `update`). The lock is acquired before loading state and
+held until the command completes. Read-only commands (`list`, `info`,
+`contents`, `doctor`) do not acquire the lock.
+
+**Permissions:** The state file is created with mode `0600` (owner
+read/write only) to prevent other users on the system from reading
+clone URLs and filesystem paths.
+
 ---
 
 ## 4. Installation Process
