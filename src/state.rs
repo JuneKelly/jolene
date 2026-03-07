@@ -31,6 +31,16 @@ impl StateLock {
 
         Ok(StateLock { _file: file })
     }
+
+    /// Acquire the lock and load state atomically.
+    ///
+    /// Prefer this over separate `acquire()` + `load()` calls for mutating
+    /// commands to ensure state is never loaded without holding the lock.
+    pub fn acquire_and_load() -> Result<(Self, State)> {
+        let lock = Self::acquire()?;
+        let state = load()?;
+        Ok((lock, state))
+    }
 }
 
 pub fn load() -> Result<State> {
