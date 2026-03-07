@@ -16,6 +16,7 @@ use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest};
 
 pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
+    let _lock = state::StateLock::acquire()?;
     let mut app_state = state::load()?;
 
     let sources: Vec<String> = match package {

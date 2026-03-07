@@ -106,6 +106,9 @@ pub fn run(
         );
     }
 
+    // Acquire state lock to prevent concurrent modifications.
+    let _lock = state::StateLock::acquire()?;
+
     // Load state early so we can build the hash→display map for conflict messages.
     let mut app_state = state::load()?;
     check_prefix_mismatch(&app_state, &source.display(), prefix.as_deref())?;
@@ -225,6 +228,9 @@ fn run_marketplace(
     if let Some(ref p) = prefix {
         out.print(format!("  Prefix: {}", p));
     }
+
+    // Acquire state lock to prevent concurrent modifications.
+    let _lock = state::StateLock::acquire()?;
 
     // Load state once before processing all plugins.
     let mut app_state = state::load()?;

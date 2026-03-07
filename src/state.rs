@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::Write;
 
 use anyhow::{Context, Result, bail};
@@ -5,6 +6,31 @@ use tempfile::NamedTempFile;
 
 use crate::config::{jolene_root, legacy_state_file, state_file};
 use crate::types::state::{PackageState, State};
+
+/// Advisory file lock for serializing concurrent jolene processes.
+///
+/// Acquires an exclusive lock on `~/.jolene/.lock` via `File::lock()`.
+/// The lock is released when this value is dropped (file close releases it).
+pub struct StateLock {
+    _file: File,
+}
+
+impl StateLock {
+    pub fn acquire() -> Result<Self> {
+        let root = jolene_root()?;
+        std::fs::create_dir_all(&root)
+            .with_context(|| format!("Failed to create jolene directory {}", root.display()))?;
+
+        let lock_path = root.join(".lock");
+        let file = File::create(&lock_path)
+            .with_context(|| format!("Failed to create lock file {}", lock_path.display()))?;
+
+        file.lock()
+            .context("Failed to acquire state lock")?;
+
+        Ok(StateLock { _file: file })
+    }
+}
 
 pub fn load() -> Result<State> {
     let path = state_file()?;

@@ -7,6 +7,7 @@ use crate::symlink::{expand_tilde, remove_symlink};
 use crate::types::target::Target;
 
 pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<()> {
+    let _lock = state::StateLock::acquire()?;
     let mut app_state = state::load()?;
 
     // 1. Lookup package
