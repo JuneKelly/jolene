@@ -149,6 +149,14 @@ pub struct InstallArgs {
     /// Suppress any manifest-defined prefix; install flat
     #[arg(long, conflicts_with = "prefix")]
     pub no_prefix: bool,
+
+    /// Override a template variable (repeatable): --var key=value
+    #[arg(long = "var", value_name = "KEY=VALUE")]
+    pub var: Vec<String>,
+
+    /// Override template variables via JSON object (repeatable): --vars-json '{...}'
+    #[arg(long = "vars-json", value_name = "JSON")]
+    pub vars_json: Vec<String>,
 }
 
 #[derive(Debug, Args)]

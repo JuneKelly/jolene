@@ -41,6 +41,8 @@ pub struct ContentItem {
     pub content_type: ContentType,
     /// Name without extension (commands/agents) or directory name (skills).
     pub name: String,
+    /// Whether this item contains template expressions and needs rendering.
+    pub templated: bool,
 }
 
 impl ContentItem {
@@ -48,7 +50,13 @@ impl ContentItem {
         ContentItem {
             content_type,
             name: name.into(),
+            templated: false,
         }
+    }
+
+    /// Rendered path given the rendered item root (e.g. `~/.jolene/rendered/{hash}/{target}/`).
+    pub fn rendered_path(&self, rendered_item_root: &Path) -> PathBuf {
+        rendered_item_root.join(self.relative_path())
     }
 
     /// Path relative to the package clone root (e.g. `commands/review.md`).

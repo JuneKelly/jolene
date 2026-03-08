@@ -197,6 +197,7 @@ mod tests {
             plugin_name: None,
             plugin_path: None,
             prefix: None,
+            var_overrides: None,
         }
     }
 
@@ -260,6 +261,7 @@ mod tests {
             plugin_name: Some(plugin_name.to_string()),
             plugin_path: Some(format!("plugins/{}", plugin_name)),
             prefix: None,
+            var_overrides: None,
         }
     }
 

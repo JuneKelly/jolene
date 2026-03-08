@@ -39,6 +39,15 @@ pub fn clone_root_for(clone_path: &str) -> Result<PathBuf> {
     Ok(jolene_root()?.join(clone_path))
 }
 
+pub fn rendered_root() -> Result<PathBuf> {
+    Ok(jolene_root()?.join("rendered"))
+}
+
+/// Path to rendered content for a specific package+target combination.
+pub fn rendered_path_for(store_key: &str, target_slug: &str) -> Result<PathBuf> {
+    Ok(rendered_root()?.join(store_key).join(target_slug))
+}
+
 /// Convert an absolute path to a `~/...` display string for user-facing output.
 pub fn display_path(path: &Path) -> String {
     if let Some(home) = effective_home()
