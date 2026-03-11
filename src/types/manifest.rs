@@ -1,10 +1,42 @@
+use std::collections::BTreeMap;
+
+use anyhow::Result;
 use serde::Deserialize;
+
+use super::var_value::VarValue;
 
 /// Top-level jolene.toml structure.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
     pub package: Package,
     pub content: ContentDecl,
+    #[serde(default)]
+    pub template: Option<TemplateDecl>,
+}
+
+/// Optional `[template]` section in the manifest.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TemplateDecl {
+    #[serde(default)]
+    pub vars: BTreeMap<String, toml::Value>,
+}
+
+impl Manifest {
+    /// Convert the raw TOML `[template.vars]` into typed `VarValue` entries.
+    pub fn template_vars(&self) -> Result<BTreeMap<String, VarValue>> {
+        let Some(ref tmpl) = self.template else {
+            return Ok(BTreeMap::new());
+        };
+        let mut out = BTreeMap::new();
+        for (key, val) in &tmpl.vars {
+            out.insert(
+                key.clone(),
+                VarValue::from_toml_value(val.clone())
+                    .map_err(|e| anyhow::anyhow!("[template.vars].{}: {}", key, e))?,
+            );
+        }
+        Ok(out)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use chrono::Utc;
 
-use crate::config::clone_root_for;
+use crate::config::{self, clone_root_for};
 use crate::content_check;
 use crate::discovery;
 use crate::git;
 use crate::output::Output;
 use crate::state;
-use crate::symlink::{SymlinkPlan, execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
+use crate::symlink::{SymlinkContext, SymlinkPlan, execute_symlinks, expand_tilde, plan_symlinks, remove_symlink};
+use crate::template;
 use crate::types::content::ContentItem;
 use crate::types::content::ContentType;
 use crate::types::state::State;
@@ -55,6 +56,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let is_marketplace = pkg.marketplace.is_some();
     let plugin_path = pkg.plugin_path.clone();
     let prefix = pkg.prefix.clone();
+    let stored_overrides = pkg.var_overrides.clone();
+    let pkg_source = pkg.source.clone();
+    let source_kind = pkg.source_kind.clone();
     let clone_root = clone_root_for(&pkg.clone_path)?;
 
     let display_names: HashMap<String, String> = app_state
@@ -76,23 +80,73 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     // 2. Collect content — marketplace uses discovery, native uses manifest.
     //    Relative marketplace plugins have a subdirectory within the clone.
     let content_dir = discovery::resolve_plugin_dir(&clone_root, plugin_path.as_deref())?;
-    let items: Vec<ContentItem> = if is_marketplace {
-        discovery::discover_content(&content_dir)?
+    let manifest = if !is_marketplace {
+        let m = load_manifest(&clone_root)?;
+        validate_manifest(&m, &clone_root)?;
+        Some(m)
     } else {
-        let manifest = load_manifest(&clone_root)?;
-        validate_manifest(&manifest, &clone_root)?;
-        collect_content_items(&manifest)
+        None
+    };
+    let mut items: Vec<ContentItem> = if let Some(ref m) = manifest {
+        collect_content_items(m)
+    } else {
+        discovery::discover_content(&content_dir)?
     };
 
     // Content quality checks (advisory)
     content_check::check_and_warn_skills(&items, &content_dir, out, "  ");
     content_check::check_and_warn_agents(&items, &content_dir, out, "  ");
 
+    // 2b. Re-scan and re-render (native packages only)
+    if let Some(ref manifest) = manifest {
+        template::scan_content_items(&mut items, &content_dir)?;
+
+        let declared_vars = manifest.template_vars()?;
+
+        // Validate stored overrides against the updated manifest.
+        if let Some(ref overrides) = stored_overrides {
+            let source_flag = match source_kind {
+                crate::types::state::SourceKind::GitHub => {
+                    format!("--github {}", pkg_source)
+                }
+                crate::types::state::SourceKind::Local => {
+                    format!("--local {}", pkg_source)
+                }
+                crate::types::state::SourceKind::Url => {
+                    format!("--url {}", pkg_source)
+                }
+            };
+            template::validate_stored_overrides(
+                overrides,
+                &declared_vars,
+                &source_flag,
+            )?;
+        }
+
+        let merged_vars = match stored_overrides {
+            Some(ref overrides) => template::merge_stored_overrides(&declared_vars, overrides),
+            None => declared_vars,
+        };
+
+        // Render for each target.
+        for inst in &installations {
+            template::render_content_items(
+                &items,
+                &content_dir,
+                &store_key,
+                &inst.target,
+                prefix.as_deref(),
+                manifest,
+                &merged_vars,
+            )?;
+        }
+    }
+
     let new_branch = git::current_branch(&clone_root)?;
     let now = Utc::now();
 
     // 3. Phase 1: plan all additions across all targets (no side effects).
-    //    Collect removals too, but don't act on them yet.
+    //    Collect removals and recreations too, but don't act on them yet.
     use std::collections::HashSet;
 
     struct TargetStage {
@@ -102,8 +156,12 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         plans: Vec<SymlinkPlan>,
         /// dst display paths (~/...) of symlinks to remove after additions succeed.
         removals: Vec<String>,
+        /// Plans for symlinks that need recreation (templated status changed).
+        /// These are executed separately after new additions succeed.
+        recreation_plans: Vec<SymlinkPlan>,
     }
 
+    let has_templated = items.iter().any(|i| i.templated);
     let mut staged: Vec<TargetStage> = Vec::new();
 
     for inst in &installations {
@@ -134,21 +192,64 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
         let existing_srcs: HashSet<String> = inst.symlinks.iter().map(|e| e.src.clone()).collect();
 
+        let rendered_root = if has_templated {
+            Some(config::rendered_path_for(&store_key, target.slug())?)
+        } else {
+            None
+        };
+
+        // Detect items whose templated status changed — need symlink recreation.
+        // Build recreation plans directly (no conflict check needed since we'll
+        // remove the old symlink before creating the new one in the execution phase).
+        let mut recreation_plans: Vec<SymlinkPlan> = Vec::new();
+        let mut recreation_srcs: HashSet<String> = HashSet::new();
+        for entry in &inst.symlinks {
+            if let Some(item) = supported.iter().find(|i| {
+                i.relative_path().to_string_lossy().as_ref() == entry.src
+            })
+                && item.templated != entry.templated
+            {
+                let src = if item.templated {
+                    if let Some(ref rendered) = rendered_root {
+                        item.rendered_path(rendered)
+                    } else {
+                        item.source_path(&content_dir)
+                    }
+                } else {
+                    item.source_path(&content_dir)
+                };
+                let content_dir_target = target_root.join(item.content_type.dir_name());
+                let dst = item.dest_path(&content_dir_target, prefix.as_deref());
+                recreation_plans.push(SymlinkPlan {
+                    src,
+                    dst,
+                    relative_src: item.relative_path().to_string_lossy().into_owned(),
+                    templated: item.templated,
+                });
+                recreation_srcs.insert(entry.src.clone());
+            }
+        }
+
+        // Only truly new items go through plan_symlinks (with conflict checking).
         let new_items: Vec<_> = supported
             .iter()
-            .filter(|i| !existing_srcs.contains(&i.relative_path().to_string_lossy().into_owned()))
+            .filter(|i| {
+                let src = i.relative_path().to_string_lossy().into_owned();
+                !existing_srcs.contains(&src) && !recreation_srcs.contains(&src)
+            })
             .cloned()
             .collect();
 
-        let plans = plan_symlinks(
-            &new_items,
-            &content_dir,
-            &target_root,
-            inst.target.as_str(),
-            &store_key,
-            &display_names,
-            prefix.as_deref(),
-        )?;
+        let plans = plan_symlinks(&SymlinkContext {
+            items: &new_items,
+            clone_root: &content_dir,
+            target_root: &target_root,
+            target_slug: inst.target.as_str(),
+            package_source: &store_key,
+            display_names: &display_names,
+            prefix: prefix.as_deref(),
+            rendered_item_root: rendered_root.as_deref(),
+        })?;
 
         let removals: Vec<String> = inst
             .symlinks
@@ -163,16 +264,18 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             plan_count: plans.len(),
             plans,
             removals,
+            recreation_plans,
         });
     }
 
-    // 4. Phase 2: execute all additions atomically.
-    //    A failure here rolls back all created symlinks; no removals have happened.
+    // 4. Execute all new additions atomically.
+    //    A failure here rolls back all created symlinks; no removals or
+    //    recreations have happened yet.
     let all_plans: Vec<_> = staged.iter_mut().flat_map(|s| s.plans.drain(..)).collect();
     let all_entries = execute_symlinks(&all_plans)?;
 
-    // 5. Phase 3: removals and state update per target.
-    //    Additions are on disk; removing old symlinks now is safe.
+    // 5. Execute recreations and removals, then update state per target.
+    //    New additions are on disk; it's now safe to touch existing symlinks.
     let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
     let mut offset = 0;
     for stage in &staged {
@@ -183,6 +286,27 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
         for entry in &new_entries {
             out.print(format!("    + {} -> {}", entry.src, entry.dst));
         }
+
+        // Execute recreation: remove old symlink, create new one.
+        let mut recreation_entries = Vec::new();
+        for plan in &stage.recreation_plans {
+            remove_symlink(&plan.dst)?;
+            if let Some(parent) = plan.dst.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::os::unix::fs::symlink(&plan.src, &plan.dst)
+                .with_context(|| format!("Failed to create symlink {}", plan.dst.display()))?;
+            recreation_entries.push(crate::types::state::SymlinkEntry {
+                src: plan.relative_src.clone(),
+                dst: crate::config::display_path(&plan.dst),
+                templated: plan.templated,
+            });
+            out.verbose(format!(
+                "    ~ {} (recreated)",
+                crate::config::display_path(&plan.dst)
+            ));
+        }
+
         for dst_str in &stage.removals {
             if let Some(dst) = expand_tilde(dst_str) {
                 remove_symlink(&dst)?;
@@ -195,14 +319,21 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             .iter_mut()
             .find(|i| i.target == stage.target_slug)
         {
+            // Remove old entries for removed items and recreated items.
+            let recreation_srcs: HashSet<&str> = stage
+                .recreation_plans
+                .iter()
+                .map(|p| p.relative_src.as_str())
+                .collect();
             inst_mut
                 .symlinks
-                .retain(|e| stage.new_srcs.contains(&e.src));
+                .retain(|e| stage.new_srcs.contains(&e.src) && !recreation_srcs.contains(e.src.as_str()));
             inst_mut.symlinks.extend(new_entries);
+            inst_mut.symlinks.extend(recreation_entries);
         }
     }
 
-    // 6. Update commit and timestamp, then persist once.
+    // 7. Update commit and timestamp, then persist once.
     pkg_mut.commit = new_commit;
     pkg_mut.branch = new_branch;
     pkg_mut.updated_at = now;

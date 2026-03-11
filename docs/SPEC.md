@@ -55,9 +55,9 @@ In verbose mode, it prints a notice.
 #### Native mode (default)
 
 ```
-jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix]
-jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix]
-jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
+jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
+jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
 ```
 
 Exactly one of `--github`, `--local`, or `--url` is required.
@@ -73,13 +73,27 @@ Exactly one of `--github`, `--local`, or `--url` is required.
   `-` or contain consecutive hyphens `--`.
 - `--no-prefix` — Suppress any manifest-defined prefix; install flat.
   Mutually exclusive with `--prefix`.
+- `--var key=value` — Override a template variable declared in `[template.vars]`.
+  Repeatable. The key is the substring before the first `=`; the value is
+  everything after it. Values are parsed with type inference: `true`/`false` →
+  bool, integer strings → integer, float strings → float, anything else →
+  string. Type must match the declared type. Arrays and objects cannot be
+  expressed via `--var`; use `--vars-json` instead.
+- `--vars-json '{...}'` — Override template variables via a JSON object.
+  Repeatable. Values may be any JSON type except `null`. Nested objects are
+  deep-merged with the accumulated value; scalars and arrays replace entirely.
+  All `--var` flags are processed first (in order), then all `--vars-json`
+  flags (in order). Referencing a key not declared in `[template.vars]` is
+  an error.
 
 **Process:**
 
 1. Clone (or pull if already cloned) the repo into the local store.
 2. Validate: repo must have `jolene.toml` and at least one content directory.
-3. For each target, create symlinks for all supported content types.
-4. Record installation in the state file.
+3. Scan for template expressions; render templated content per target.
+4. For each target, create symlinks for all supported content types.
+   Templated items point to rendered copies; others point to the clone.
+5. Record installation in the state file.
 
 #### Marketplace mode (`--marketplace`)
 
@@ -185,7 +199,7 @@ jolene uninstall <package> [--from <target>...] [--purge]
 
 - `<package>` — `Author/repo` or just `repo` if unambiguous.
 - `--from <target>` — Remove from specific targets. If omitted, removes from all.
-- `--purge` — Also delete the cloned repo from the local store.
+- `--purge` — Also delete the cloned repo and rendered copies from the local store.
 
 ### jolene list
 
@@ -290,6 +304,7 @@ jolene doctor
 Verifies health of all installations:
 - Checks all recorded symlinks exist and resolve to valid targets.
 - Reports broken symlinks, missing clones, and orphaned symlinks.
+- Reports orphaned `rendered/` directories not referenced by any installed package.
 
 ---
 
@@ -351,6 +366,11 @@ homepage = "https://junebug.dev/review-tools"    # optional
 commands = ["review", "deploy"]
 skills = ["code-analysis", "style-check"]
 agents = ["reviewer"]
+
+[template.vars]                                  # optional — template variables
+doc_url       = "https://example.com/docs"
+show_advanced = false
+max_retries   = 3
 ```
 
 **Required fields:**
@@ -384,6 +404,7 @@ All three fields are optional, but at least one must be present and non-empty.
 | `package.prefix`          | string | Default prefix for installed content names. Overridable with `--prefix` / `--no-prefix` at install time. Must match `[a-z0-9-]+`, 1-64 chars, no leading/trailing `-`, no `--`. |
 | `package.urls.repository` | string | Source repository URL.          |
 | `package.urls.homepage`   | string | Project homepage or docs URL.   |
+| `template.vars.*`         | mixed  | Template variables available as `jolene.vars.*` in content files. Values may be strings, booleans, integers, floats, arrays, or inline tables (nested objects). TOML datetime is not supported. Overridable at install time with `--var` / `--vars-json`. See **Templating** below. |
 
 ### Marketplace Format (Claude Code Plugin Repos)
 
@@ -475,8 +496,14 @@ real config files. In normal usage, neither needs to be set.
 ~/.jolene/
   state.json                        # installation state
   repos/                            # cloned repositories
-    a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/  # git clone
-    b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7/  # git clone
+    a3f2c1d8.../                    # git clone (64-char SHA256 hex)
+    b8e1d4f9.../                    # git clone
+  rendered/                         # rendered template copies (per-target)
+    a3f2c1d8.../                    # only present when package has templated content
+      claude-code/
+        commands/review.md          # rendered from template
+      opencode/
+        commands/review.md          # may differ (target-conditional content)
 ```
 
 Each directory under `repos/` is named with the SHA256 of the package's canonical key
@@ -494,16 +521,19 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
       "source_kind": "github",
       "source": "junebug/review-tools",
       "clone_url": "https://github.com/junebug/review-tools.git",
-      "clone_path": "repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8",
+      "clone_path": "repos/{hash}",
       "branch": "main",
       "commit": "abc1234def5678",
       "installed_at": "2026-02-28T10:00:00Z",
       "updated_at": "2026-02-28T10:00:00Z",
+      "var_overrides": {
+        "doc_url": "https://internal.corp/docs"
+      },
       "installations": [
         {
           "target": "opencode",
           "symlinks": [
-            { "src": "commands/review.md", "dst": "~/.config/opencode/commands/review.md" },
+            { "src": "commands/review.md", "dst": "~/.config/opencode/commands/review.md", "templated": true },
             { "src": "skills/code-analysis", "dst": "~/.config/opencode/skills/code-analysis" },
             { "src": "skills/style-check", "dst": "~/.config/opencode/skills/style-check" }
           ]
@@ -511,7 +541,7 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
         {
           "target": "claude-code",
           "symlinks": [
-            { "src": "commands/review.md", "dst": "~/.claude/commands/review.md" },
+            { "src": "commands/review.md", "dst": "~/.claude/commands/review.md", "templated": true },
             { "src": "skills/code-analysis", "dst": "~/.claude/skills/code-analysis" },
             { "src": "skills/style-check", "dst": "~/.claude/skills/style-check" }
           ]
@@ -550,6 +580,20 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 |----------|----------------------------------------------------------------|
 | `prefix` | The install-time prefix applied to content names (e.g. `"jb"` → `jb--review.md`). Absent when no prefix was used. Locked at install time — `jolene update` preserves the stored prefix. To change prefix, uninstall and reinstall. |
 
+**Template fields** (optional, present only for packages with `--var` or `--vars-json` overrides):
+
+| Field            | Description                                                    |
+|------------------|----------------------------------------------------------------|
+| `var_overrides`  | Map of user-supplied variable overrides from `--var` / `--vars-json`. Only keys that were explicitly overridden are stored (not manifest defaults). Preserved across `jolene update` and used to re-render templates. Absent when no overrides were given. |
+
+**Symlink entry fields:**
+
+| Field       | Description                                                    |
+|-------------|----------------------------------------------------------------|
+| `src`       | Relative path to the content item within the package clone root (e.g. `"commands/review.md"`). |
+| `dst`       | Display path of the installed symlink (e.g. `"~/.claude/commands/review.md"`). |
+| `templated` | `true` if the symlink points to a rendered copy in `rendered/` instead of `repos/`. Defaults to `false` (omitted for non-templated items). |
+
 **Store key for marketplace plugins:**
 - **Relative-path plugins** share the marketplace repo's store key. Multiple
   relative plugins from the same marketplace share one clone directory but get
@@ -575,7 +619,7 @@ The 64-character hex digest is used as the directory name under `repos/`.
       "source_kind": "github",
       "source": "acme-corp/tools::review-plugin",
       "clone_url": "https://github.com/acme-corp/tools.git",
-      "clone_path": "repos/b8e1d4f9a2c7e0b3d5f2a9c4e7b1d3f6a8c2e5b9d4f7a1c3e8b6d2f4a0c9e3b7",
+      "clone_path": "repos/{hash}",
       "branch": "main",
       "commit": "fed9876abc1234",
       "installed_at": "2026-03-02T10:00:00Z",
@@ -653,6 +697,22 @@ clone URLs and filesystem paths.
     - Warn if 'name' or 'description' is missing.
     Frontmatter parsing uses the same rules as skill checks (step 3b).
 
+3d. VALIDATE TEMPLATE OVERRIDES (native packages only)
+    If --var or --vars-json flags were given:
+    - Parse --vars-json values as JSON; error if the top-level value is not
+      a JSON object, or if any value within it is null.
+    - For each key across all override flags, verify it is declared in
+      [template.vars]. Error on unknown keys (prevents silent typos).
+    - For each --var value, verify the inferred type matches the declared type.
+    This step is fatal and runs regardless of whether any content is templated.
+
+3e. SCAN FOR TEMPLATES (native packages only)
+    For each declared content item:
+    - Commands/Agents: read the .md file, scan for {~, {%~, or {#~.
+    - Skills: recursively scan every file in the skill directory.
+    Mark each content item as templated or not. Files with no template
+    expressions are unaffected — they are symlinked to repos/ as before.
+
 4. RESOLVE PREFIX
    - --no-prefix → None (always flat)
    - --prefix X → Some("X") (validated)
@@ -662,6 +722,15 @@ clone URLs and filesystem paths.
    - If --to specified: use those targets.
    - If --to omitted: detect by checking which config roots exist.
    - If none found: error with guidance to use --to.
+
+5b. RENDER TEMPLATES (native packages only, if any items are templated)
+    For each target × each templated content item:
+    - Render using MiniJinja with the full jolene context for that target.
+    - Write rendered output to ~/.jolene/rendered/{hash}/{target}/{relative_path}.
+    - For skills: copy the entire directory, rendering templated files,
+      copying non-templated files as-is.
+    Non-templated items: no action; their symlinks will point to repos/.
+    Rendering is per-target because jolene.target differs per target.
 
 6. CHECK CONFLICTS (per target, per content item)
    - Destination is a symlink into ~/.jolene/ from a different package:
@@ -685,9 +754,13 @@ clone URLs and filesystem paths.
    - Commands/Agents: symlink each .md file individually.
    - Skills: symlink each skill directory.
    - All symlinks use absolute paths (no ~, fully expanded).
+   - Templated items: symlink source is rendered/{hash}/{target}/... instead of repos/{hash}/...
+   - Non-templated items: symlink source is repos/{hash}/... (unchanged).
 
 9. RECORD STATE
-   Write updated state.json (atomic write). Include prefix if set.
+   Write updated state.json (atomic write). Include prefix if set,
+   var_overrides if any --var/--vars-json flags were given, and
+   templated: true on each symlink entry that points to a rendered copy.
 ```
 
 ### Marketplace Install: Step by Step
@@ -757,7 +830,7 @@ the state file. This ensures state always reflects reality.
 2. SCOPE to --from targets, or all targets if omitted.
 3. REMOVE symlinks. Warn (don't error) if a symlink is already gone.
 4. UPDATE state.json. Remove target entries; remove package if no targets remain.
-5. PURGE clone if --purge flag set.
+5. PURGE if --purge flag set: delete repos/{hash}/ and rendered/{hash}/ (if present).
 ```
 
 ### Update: Step by Step
@@ -765,9 +838,20 @@ the state file. This ensures state always reflects reality.
 ```
 1. git pull in the clone directory.
 2. Diff content: compare current files against recorded symlinks.
+
+2b. RE-SCAN AND RE-RENDER (native packages only)
+    - Re-scan all content items for template expressions.
+    - Validate stored var_overrides against the updated [template.vars].
+      If a stored override key is no longer declared, or its declared type
+      changed, abort with an error directing the user to re-install.
+    - Re-render all templated items using stored var_overrides.
+    - Items whose templated status changed (gained or lost template
+      expressions): remove and recreate the symlink pointing to the
+      correct source (rendered/ or repos/).
+
 3. Create symlinks for new content.
 4. Remove symlinks for deleted content.
-5. Update commit hash and timestamp in state.json.
+5. Update commit hash, timestamp, and templated flags in state.json.
 ```
 
 ---
@@ -802,11 +886,18 @@ codex:
 
 ### Path Resolution Example
 
-Package content `commands/review.md` installed to `opencode`:
+Package content `commands/review.md` installed to `opencode` (non-templated):
 
 ```
-symlink_source (absolute): /Users/you/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/commands/review.md
-symlink_target:            /Users/you/.config/opencode/commands/review.md
+symlink_source (absolute): /Users/you/.jolene/repos/{hash}/commands/review.md
+symlink_destination:       /Users/you/.config/opencode/commands/review.md
+```
+
+Same file, but templated:
+
+```
+symlink_source (absolute): /Users/you/.jolene/rendered/{hash}/opencode/commands/review.md
+symlink_destination:       /Users/you/.config/opencode/commands/review.md
 ```
 
 ### Unsupported Content
@@ -826,7 +917,8 @@ silently. With `--verbose`:
 ### Why Symlinks
 
 - **Auto-update:** `git pull` in the store updates all installed content with
-  no re-copy step.
+  no re-copy step (non-templated items only; templated items are re-rendered
+  during `jolene update`).
 - **Traceability:** `readlink` shows exactly which package provides a file.
 - **Proven:** Claude Code already works with symlinked commands.
 - **Efficient:** No file duplication.
@@ -836,7 +928,7 @@ silently. With `--verbose`:
 Each `.md` file gets its own symlink:
 
 ```
-~/.claude/commands/review.md → /home/user/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/commands/review.md
+~/.claude/commands/review.md → /home/user/.jolene/repos/{hash}/commands/review.md
 ```
 
 ### Directory-Level Symlinks (Skills)
@@ -844,8 +936,23 @@ Each `.md` file gets its own symlink:
 Each skill directory is symlinked whole to preserve internal structure:
 
 ```
-~/.claude/skills/code-analysis/ → /home/user/.jolene/repos/a3f2c1d8e9b4f761a0b5c3d2e8f4a7b1c9d6e2f5a8b3c7d1e4f9a2b6c0d5e3f8/skills/code-analysis/
+~/.claude/skills/code-analysis/ → /home/user/.jolene/repos/{hash}/skills/code-analysis/
 ```
+
+### Templated Content
+
+When a content item contains template expressions, the symlink points to
+`rendered/` instead of `repos/`:
+
+```
+~/.claude/commands/review.md → /home/user/.jolene/rendered/{hash}/claude-code/commands/review.md
+~/.claude/skills/foo/        → /home/user/.jolene/rendered/{hash}/claude-code/skills/foo/
+```
+
+The `rendered/` copy is per-target (since `jolene.target` may differ). Items
+without template expressions are symlinked to `repos/` as before. Both
+`repos/` and `rendered/` paths are under `~/.jolene/`, so conflict detection
+(which checks `starts_with(~/.jolene/)`) works for both.
 
 ### Optional Content Prefix
 
@@ -876,7 +983,80 @@ This avoids breakage from shell or working directory context.
 
 ---
 
-## 7. Error Handling
+## 7. Templating
+
+Content files may embed template expressions that are evaluated at install
+time. This enables cross-references between content items (e.g. a skill that
+references a companion command by its installed name, including prefix) and
+target-conditional content.
+
+Templating applies to **native packages only**. Marketplace-sourced content is
+not processed for templates.
+
+For a comprehensive guide with examples and common patterns, see
+[TEMPLATING.md](TEMPLATING.md).
+
+### Template Syntax
+
+MiniJinja is used with custom delimiters to avoid collisions with other
+template systems that may appear literally in instructional content:
+
+| Construct  | Syntax                             | Purpose                               |
+|------------|------------------------------------|---------------------------------------|
+| Expression | `{~ expr ~}`                       | Output a value                        |
+| Block      | `{%~ tag ~%}`                      | Control flow (`if`, `for`)            |
+| Comment    | `{#~ text ~#}`                     | Template-only comment, not emitted    |
+| Escape     | `{%~ raw ~%}...{%~ endraw ~%}`     | Emit literally, no processing         |
+
+Whitespace trimming uses `-` placed immediately inside the delimiter:
+`{~- expr -~}` strips surrounding whitespace.
+
+### Template Context
+
+Everything is namespaced under `jolene`. Nothing else is in scope.
+`UndefinedBehavior::Strict` is set — any reference to an undefined name is a
+hard error at install time, caught before any symlinks are created.
+
+| Reference                       | Type     | Value                                                                |
+|---------------------------------|----------|----------------------------------------------------------------------|
+| `jolene.resolve("name")`        | Function | Installed name of content item `name`, with prefix applied. Errors if not declared. A second argument disambiguates when a name appears in multiple content types: `jolene.resolve("name", "command")`. |
+| `jolene.prefix`                 | String   | The active prefix, or `""` if none.                                  |
+| `jolene.target`                 | String   | Target slug: `"claude-code"`, `"opencode"`, or `"codex"`.           |
+| `jolene.package.name`           | String   | Package name from manifest.                                          |
+| `jolene.package.version`        | String   | Package version from manifest.                                       |
+| `jolene.vars.*`                 | Mixed    | Package-defined variables from `[template.vars]`, overridable via `--var` / `--vars-json`. |
+
+No MiniJinja built-in filters, functions, or globals are registered beyond the
+`jolene` global. `{% if %}` and `{% for %}` control flow are available. `{% macro %}`,
+`{% include %}`, and `{% extends %}` are disabled. A fuel limit of 50,000
+operations prevents pathological templates.
+
+### Template Detection
+
+Templated files are detected automatically by scanning for the opening
+delimiters `{~`, `{%~`, or `{#~`. Authors do not need to declare which files
+use templating.
+
+- **Commands/Agents:** The `.md` file is scanned.
+- **Skills:** Every file in the skill directory is scanned recursively. If any
+  file contains a template expression, the entire skill directory is rendered
+  (templated files are rendered; non-templated files are copied as-is).
+
+### Example
+
+```text
+Run /{~ jolene.resolve("deploy") ~} to deploy.
+
+{%~ if jolene.target == "claude-code" ~%}
+Invoke it as a slash command: `/{~ jolene.resolve("deploy") ~}`.
+{%~ endif ~%}
+
+API docs: {~ jolene.vars.doc_url ~}
+```
+
+---
+
+## 8. Error Handling
 
 ### Local Path Not Found
 
@@ -980,6 +1160,61 @@ Error: Plugin 'nonexistent' not found in marketplace.
 Error: Plugin 'npm-thing' uses an unsupported source type (npm/pip are not yet supported by jolene)
 ```
 
+### Template: Invalid resolve() Target
+
+```
+Error: Template error in skills/foo/SKILL.md:
+  jolene.resolve("baz") references content item 'baz', which is not
+  declared in this package.
+  Declared items: bar (command), foo (skill)
+```
+
+### Template: Ambiguous resolve()
+
+```
+Error: Template error in skills/foo/SKILL.md:
+  jolene.resolve("review") is ambiguous — 'review' exists as both a
+  command and a skill.
+  Use jolene.resolve("review", "command") to disambiguate.
+```
+
+### Template: Unknown --var Key
+
+```
+Error: --var typo_url: 'typo_url' is not declared in [template.vars].
+  Declared vars: doc_url, model_hint
+```
+
+### Template: --var Type Mismatch
+
+```
+Error: --var show_advanced=hello: declared as bool in [template.vars],
+  expected true or false.
+```
+
+### Template: --vars-json null Value
+
+```
+Error: --vars-json: key 'status' has a null value, which is not supported.
+  Permitted types: string, bool, number, array, object.
+```
+
+### Template: Stale Override on Update
+
+```
+Error: Stored variable override 'old_key' is no longer declared in [template.vars].
+  The package update removed this variable. Re-install with corrected overrides:
+    jolene install --reinstall --github owner/repo [--var key=value] [--vars-json ...]
+  Declared vars: doc_url, model_hint
+```
+
+### Template: Fuel Exhausted
+
+```
+Error: Template in skills/foo/SKILL.md exceeded execution limit.
+  Possible infinite loop in template logic.
+```
+
 ### Partial Failure Rollback
 
 If symlink creation fails partway through, all symlinks created during
@@ -993,7 +1228,7 @@ Error: Conflict at ~/.claude/commands/deploy.md (see above)
 
 ---
 
-## 8. Future Work
+## 9. Future Work
 
 Items explicitly out of scope for MVP, documented for future consideration:
 

@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 
-use crate::config::jolene_root;
+use crate::config::{self, jolene_root};
 use crate::output::Output;
 use crate::state;
 use crate::symlink::{expand_tilde, remove_symlink};
@@ -88,7 +88,7 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
 
     state::save(&app_state)?;
 
-    // 5. Purge clone if requested
+    // 5. Purge clone and rendered files if requested
     if purge && remove_package {
         let clone_still_needed = app_state
             .packages
@@ -102,6 +102,19 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
             if full_clone_path.exists() {
                 std::fs::remove_dir_all(&full_clone_path)?;
                 out.print(format!("  Purged clone at {}", full_clone_path.display()));
+            }
+
+            // Also purge rendered copies.
+            let store_key = clone_path
+                .strip_prefix("repos/")
+                .unwrap_or(&clone_path);
+            let rendered_dir = config::rendered_root()?.join(store_key);
+            if rendered_dir.exists() {
+                std::fs::remove_dir_all(&rendered_dir)?;
+                out.print(format!(
+                    "  Purged rendered copies at {}",
+                    rendered_dir.display()
+                ));
             }
         }
     } else if purge {

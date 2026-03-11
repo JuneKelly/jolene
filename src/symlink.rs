@@ -51,13 +51,20 @@ pub fn is_jolene_symlink(target: &Path) -> Result<bool> {
     Ok(target.starts_with(&root))
 }
 
-/// Extract the 64-char store-key hash from a path like ~/.jolene/repos/{hash}/...
+/// Extract the 64-char store-key hash from a path like
+/// `~/.jolene/repos/{hash}/...` or `~/.jolene/rendered/{hash}/...`.
 pub fn package_from_symlink(target: &Path) -> Option<String> {
     let root = jolene_root().ok()?;
-    let repos = root.join("repos");
-    let rel = target.strip_prefix(&repos).ok()?;
-    let hash = rel.components().next()?.as_os_str().to_str()?;
-    Some(hash.to_string())
+    // Try repos/ first, then rendered/.
+    for subdir in &["repos", "rendered"] {
+        let base = root.join(subdir);
+        if let Ok(rel) = target.strip_prefix(&base) {
+            if let Some(hash) = rel.components().next().and_then(|c| c.as_os_str().to_str()) {
+                return Some(hash.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// A planned symlink operation.
@@ -67,43 +74,58 @@ pub struct SymlinkPlan {
     pub dst: PathBuf,
     /// Source path relative to the clone root, stored in state.
     pub relative_src: String,
+    /// Whether this item was rendered from a template.
+    pub templated: bool,
+}
+
+/// Context for planning symlinks — groups the parameters for `plan_symlinks`.
+pub struct SymlinkContext<'a> {
+    pub items: &'a [ContentItem],
+    pub clone_root: &'a Path,
+    pub target_root: &'a Path,
+    pub target_slug: &'a str,
+    pub package_source: &'a str,
+    /// Maps store-key hashes to human-readable package names for conflict messages.
+    pub display_names: &'a HashMap<String, String>,
+    pub prefix: Option<&'a str>,
+    /// Root of rendered output for templated items (e.g. `rendered/{hash}/{target}/`).
+    pub rendered_item_root: Option<&'a Path>,
 }
 
 /// Build the symlink plan for a set of content items, checking for conflicts.
 /// Returns an error on the first conflict encountered.
-///
-/// `display_names` maps store-key hashes to human-readable package names
-/// for use in conflict error messages.
-pub fn plan_symlinks(
-    items: &[ContentItem],
-    clone_root: &Path,
-    target_root: &Path,
-    target_slug: &str,
-    package_source: &str,
-    display_names: &HashMap<String, String>,
-    prefix: Option<&str>,
-) -> Result<Vec<SymlinkPlan>> {
+pub fn plan_symlinks(ctx: &SymlinkContext<'_>) -> Result<Vec<SymlinkPlan>> {
     let mut plans = Vec::new();
 
-    for item in items {
-        let src = item.source_path(clone_root);
-        let content_dir = target_root.join(item.content_type.dir_name());
-        let dst = item.dest_path(&content_dir, prefix);
+    for item in ctx.items {
+        let src = if item.templated {
+            if let Some(rendered) = ctx.rendered_item_root {
+                item.rendered_path(rendered)
+            } else {
+                item.source_path(ctx.clone_root)
+            }
+        } else {
+            item.source_path(ctx.clone_root)
+        };
+        let content_dir = ctx.target_root.join(item.content_type.dir_name());
+        let dst = item.dest_path(&content_dir, ctx.prefix);
         let relative_src = item.relative_path().to_string_lossy().into_owned();
 
-        match check_conflict(&dst, package_source)? {
+        match check_conflict(&dst, ctx.package_source)? {
             ConflictCheck::Clear => {
                 plans.push(SymlinkPlan {
                     src,
                     dst,
                     relative_src,
+                    templated: item.templated,
                 });
             }
             ConflictCheck::AlreadyInstalled => {
                 // Already correct — skip silently.
             }
             ConflictCheck::PackageConflict { store_key } => {
-                let name = display_names
+                let name = ctx
+                    .display_names
                     .get(&store_key)
                     .map(|s| s.as_str())
                     .unwrap_or(&store_key);
@@ -112,7 +134,7 @@ pub fn plan_symlinks(
                     display_path(&dst),
                     name,
                     name,
-                    target_slug
+                    ctx.target_slug
                 );
             }
             ConflictCheck::UserConflict => {
@@ -167,6 +189,7 @@ pub fn execute_symlinks(plans: &[SymlinkPlan]) -> Result<Vec<SymlinkEntry>> {
         entries.push(SymlinkEntry {
             src: plan.relative_src.clone(),
             dst: display_path(&plan.dst),
+            templated: plan.templated,
         });
     }
 

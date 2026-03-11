@@ -1,22 +1,24 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 
 use crate::cli::InstallArgs;
-use crate::config::clone_root_for;
+use crate::config::{self, clone_root_for};
 use crate::content_check;
 use crate::discovery;
 use crate::git;
 use crate::marketplace::{self, PluginSource};
 use crate::output::Output;
 use crate::state;
-use crate::symlink::{SymlinkPlan, execute_symlinks, plan_symlinks};
+use crate::symlink::{SymlinkContext, SymlinkPlan, execute_symlinks, plan_symlinks};
+use crate::template;
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::source::Source;
 use crate::types::state::{Installation, PackageState, SourceKind};
 use crate::types::target::Target;
+use crate::types::var_value::VarValue;
 use crate::validation::{collect_content_items, load_manifest, resolve_prefix, validate_manifest};
 
 pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
@@ -55,7 +57,15 @@ pub fn run_from_args(args: &InstallArgs, out: &Output) -> Result<()> {
         if !args.pick.is_empty() {
             out.print("Warning: --pick is ignored without --marketplace");
         }
-        run(&source, &args.to, cli_prefix, cli_no_prefix, out)
+        run(
+            &source,
+            &args.to,
+            cli_prefix,
+            cli_no_prefix,
+            &args.var,
+            &args.vars_json,
+            out,
+        )
     }
 }
 
@@ -65,6 +75,8 @@ pub fn run(
     to: &[String],
     cli_prefix: Option<&str>,
     cli_no_prefix: bool,
+    var_flags: &[String],
+    vars_json_flags: &[String],
     out: &Output,
 ) -> Result<()> {
     out.print(format!("Installing {}...", source.display()));
@@ -87,7 +99,7 @@ pub fn run(
     validate_manifest(&manifest, &clone_root)
         .map_err(|e| anyhow::anyhow!("Error: {} {}", source.display(), e))?;
 
-    let items = collect_content_items(&manifest);
+    let mut items = collect_content_items(&manifest);
     let prefix = resolve_prefix(
         cli_prefix,
         cli_no_prefix,
@@ -98,6 +110,14 @@ pub fn run(
     if let Some(ref p) = prefix {
         out.print(format!("  Prefix: {}", p));
     }
+
+    // 3c. Validate CLI overrides
+    let declared_vars = manifest.template_vars()?;
+    let (merged_vars, var_overrides) =
+        template::parse_and_validate_var_overrides(var_flags, vars_json_flags, &declared_vars)?;
+
+    // 3d. Scan for templates
+    template::scan_content_items(&mut items, &clone_root)?;
 
     // Content quality checks (advisory)
     content_check::check_and_warn_skills(&items, &clone_root, out, "  ");
@@ -128,17 +148,30 @@ pub fn run(
     let now = Utc::now();
     let store_key = source.store_key();
 
+    // 5b. Render templates (per target)
+    for target in &targets {
+        template::render_content_items(
+            &items,
+            &clone_root,
+            &store_key,
+            target.slug(),
+            prefix.as_deref(),
+            &manifest,
+            &merged_vars,
+        )?;
+    }
+
     // Phase 1: check conflicts and collect all plans (no side effects).
-    let (mut staged, targets) = plan_all_targets(
-        &items,
-        &clone_root,
-        &targets,
-        &store_key,
-        &display_names,
+    let (mut staged, targets) = plan_all_targets(&PlanAllTargetsContext {
+        items: &items,
+        clone_root: &clone_root,
+        targets: &targets,
+        store_key: &store_key,
+        display_names: &display_names,
         source,
         out,
-        prefix.as_deref(),
-    )?;
+        prefix: prefix.as_deref(),
+    })?;
 
     // Phase 2: execute all plans atomically.
     let (new_installations, target_names) = execute_and_record(&mut staged, &targets, out)?;
@@ -160,6 +193,7 @@ pub fn run(
             plugin_path: None,
             display_override: None,
             prefix,
+            var_overrides,
         },
     )?;
     state::save(&app_state)?;
@@ -298,16 +332,16 @@ fn run_marketplace(
         let commit = git::full_commit(&resolved.dir)?;
         let now = Utc::now();
 
-        let (mut staged, targets_used) = plan_all_targets(
-            &items,
-            &resolved.dir,
-            &targets,
-            &resolved.store_key,
-            &display_names,
-            &resolved.source,
+        let (mut staged, targets_used) = plan_all_targets(&PlanAllTargetsContext {
+            items: &items,
+            clone_root: &resolved.dir,
+            targets: &targets,
+            store_key: &resolved.store_key,
+            display_names: &display_names,
+            source: &resolved.source,
             out,
-            prefix.as_deref(),
-        )?;
+            prefix: prefix.as_deref(),
+        })?;
 
         let (new_installations, target_names) =
             execute_and_record(&mut staged, &targets_used, out)?;
@@ -328,6 +362,7 @@ fn run_marketplace(
                 plugin_path: resolved.plugin_path,
                 display_override: Some(resolved.display_name),
                 prefix: prefix.clone(),
+                var_overrides: None,
             },
         )?;
 
@@ -454,26 +489,31 @@ struct TargetStage {
     plans: Vec<SymlinkPlan>,
 }
 
+/// Context for planning symlinks across all targets.
+struct PlanAllTargetsContext<'a> {
+    items: &'a [ContentItem],
+    clone_root: &'a Path,
+    targets: &'a [Target],
+    store_key: &'a str,
+    display_names: &'a HashMap<String, String>,
+    source: &'a Source,
+    out: &'a Output,
+    prefix: Option<&'a str>,
+}
+
 /// Plan symlinks for all targets. Returns the staged plans and the filtered target list.
-fn plan_all_targets(
-    items: &[ContentItem],
-    clone_root: &Path,
-    targets: &[Target],
-    store_key: &str,
-    display_names: &HashMap<String, String>,
-    source: &Source,
-    out: &Output,
-    prefix: Option<&str>,
-) -> Result<(Vec<TargetStage>, Vec<Target>)> {
+fn plan_all_targets(ctx: &PlanAllTargetsContext<'_>) -> Result<(Vec<TargetStage>, Vec<Target>)> {
+    let has_templated = ctx.items.iter().any(|i| i.templated);
     let mut staged: Vec<TargetStage> = Vec::new();
     let mut used_targets: Vec<Target> = Vec::new();
 
-    for target in targets {
+    for target in ctx.targets {
         let target_root = target
             .config_root()
             .ok_or_else(|| anyhow::anyhow!("Cannot determine config root for {}", target))?;
 
-        let supported: Vec<_> = items
+        let supported: Vec<_> = ctx
+            .items
             .iter()
             .filter(|item| match item.content_type {
                 ContentType::Command => target.supports_commands(),
@@ -483,17 +523,19 @@ fn plan_all_targets(
             .cloned()
             .collect();
 
-        let skipped_commands = items
+        let skipped_commands = ctx
+            .items
             .iter()
             .filter(|i| i.content_type == ContentType::Command && !target.supports_commands())
             .count();
-        let skipped_agents = items
+        let skipped_agents = ctx
+            .items
             .iter()
             .filter(|i| i.content_type == ContentType::Agent && !target.supports_agents())
             .count();
 
         if skipped_commands > 0 {
-            out.verbose(format!(
+            ctx.out.verbose(format!(
                 "  Skipping {} command{} for {} (not supported)",
                 skipped_commands,
                 if skipped_commands == 1 { "" } else { "s" },
@@ -501,7 +543,7 @@ fn plan_all_targets(
             ));
         }
         if skipped_agents > 0 {
-            out.verbose(format!(
+            ctx.out.verbose(format!(
                 "  Skipping {} agent{} for {} (not supported)",
                 skipped_agents,
                 if skipped_agents == 1 { "" } else { "s" },
@@ -509,19 +551,26 @@ fn plan_all_targets(
             ));
         }
 
-        let plans = plan_symlinks(
-            &supported,
-            clone_root,
-            &target_root,
-            target.slug(),
-            store_key,
-            display_names,
-            prefix,
-        )
+        let rendered_root = if has_templated {
+            Some(config::rendered_path_for(ctx.store_key, target.slug())?)
+        } else {
+            None
+        };
+
+        let plans = plan_symlinks(&SymlinkContext {
+            items: &supported,
+            clone_root: ctx.clone_root,
+            target_root: &target_root,
+            target_slug: target.slug(),
+            package_source: ctx.store_key,
+            display_names: ctx.display_names,
+            prefix: ctx.prefix,
+            rendered_item_root: rendered_root.as_deref(),
+        })
         .map_err(|e| {
             anyhow::anyhow!(
                 "Conflict installing {} to {}:\n  {}",
-                source.display(),
+                ctx.source.display(),
                 target,
                 e
             )
@@ -582,6 +631,8 @@ struct StateRecord {
     /// When None, uses `source.display()`.
     display_override: Option<String>,
     prefix: Option<String>,
+    /// Template variable overrides from `--var` / `--vars-json`.
+    var_overrides: Option<BTreeMap<String, VarValue>>,
 }
 
 fn record_state(
@@ -613,6 +664,7 @@ fn record_state(
                 existing.plugin_path = record.plugin_path;
             }
             existing.prefix = record.prefix;
+            existing.var_overrides = record.var_overrides;
             for inst in new_installations {
                 if let Some(existing_inst) = existing
                     .installations
@@ -644,6 +696,7 @@ fn record_state(
                 plugin_name: record.plugin_name,
                 plugin_path: record.plugin_path,
                 prefix: record.prefix,
+                var_overrides: record.var_overrides,
             });
         }
     }

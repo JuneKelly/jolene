@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+use super::var_value::VarValue;
 
 /// Source type discriminant stored in state.json.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -66,6 +69,9 @@ pub struct PackageState {
     /// Install-time prefix applied to content names (e.g. "jb" → "jb--review.md").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
+    /// Template variable overrides from `--var` / `--vars-json` at install time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub var_overrides: Option<BTreeMap<String, VarValue>>,
 }
 
 impl PackageState {
@@ -100,4 +106,7 @@ pub struct SymlinkEntry {
     pub src: String,
     /// Display path with ~, e.g. "~/.claude/commands/review.md"
     pub dst: String,
+    /// Whether this item was rendered from a template (symlink points to rendered/).
+    #[serde(default)]
+    pub templated: bool,
 }

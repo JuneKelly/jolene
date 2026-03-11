@@ -33,9 +33,9 @@ This requires [just](https://github.com/just-systems/just) and a Rust toolchain.
 ### Install a package
 
 ```sh
-jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix]
-jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix]
-jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix]
+jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
+jolene install --local  <path>       [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
+jolene install --url    <git-url>    [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
 ```
 
 Exactly one of `--github`, `--local`, or `--url` is required. Clones the
@@ -235,6 +235,10 @@ repository = "https://github.com/junebug/review-tools"
 commands = ["review"]
 skills = ["code-analysis"]
 agents = ["reviewer"]
+
+[template.vars]                    # optional — template variables
+doc_url       = "https://example.com/docs"
+show_advanced = false
 ```
 
 Only items declared in `[content]` are installed. At least one item must be
@@ -250,6 +254,50 @@ non-empty.
 | Agents       | yes         | yes      | —     |
 
 Unsupported content types are silently skipped (visible with `--verbose`).
+
+### Templating
+
+Content files may embed template expressions that are evaluated at install
+time. This enables correct cross-references between content items (e.g. a
+skill that references a companion command by its installed name, including
+prefix) and target-conditional content.
+
+Template expressions use custom delimiters (`{~ ~}` for values, `{%~ ~%}` for
+blocks, `{#~ ~#}` for comments) chosen to avoid collisions with other template
+systems. Everything is namespaced under `jolene`:
+
+```text
+Run /{~ jolene.resolve("deploy") ~} to deploy.
+
+{%~ if jolene.target == "claude-code" ~%}
+Use the slash command: `/{~ jolene.resolve("deploy") ~}`.
+{%~ endif ~%}
+
+API docs: {~ jolene.vars.doc_url ~}
+```
+
+Available context:
+- `jolene.resolve("name")` — installed name of a content item, with prefix applied
+- `jolene.prefix` — the active prefix, or `""` if none
+- `jolene.target` — target slug (`"claude-code"`, `"opencode"`, `"codex"`)
+- `jolene.package.name` / `jolene.package.version` — from manifest
+- `jolene.vars.*` — variables declared in `[template.vars]`
+
+Override template variables at install time:
+
+```sh
+jolene install --github foo/bar \
+  --var doc_url=https://internal.corp/docs \
+  --var show_advanced=true \
+  --vars-json '{"notify_channels": ["slack", "pagerduty"]}'
+```
+
+Variable overrides are stored in the state file and preserved across
+`jolene update`. Templating applies to native packages only — marketplace
+content is not processed.
+
+See [docs/TEMPLATING.md](docs/TEMPLATING.md) for the full templating guide,
+and [docs/SPEC.md](docs/SPEC.md) Section 7 for the specification.
 
 ### Marketplace packages
 

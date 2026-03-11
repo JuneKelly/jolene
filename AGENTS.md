@@ -8,8 +8,9 @@ Currently, this project is in the exploration phase, and subject to change.
 
 ## Key Files
 
-- @README.md: project readme
-- @docs/SPEC.md: specification
+- @docs/SPEC.md - specification
+- @README.md - project readme
+- @docs/TEMPLATING.md - documentation on the templating system
 
 ## Workflow
 
