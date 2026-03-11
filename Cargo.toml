@@ -1,6 +1,6 @@
 [package]
 name = "jolene"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 
 [dependencies]
@@ -13,7 +13,11 @@ chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3"
 sha2 = "0.10.9"
 serde_json = "1"
-minijinja = { version = "2", default-features = false, features = ["custom_syntax", "fuel", "serde"] }
+minijinja = { version = "2", default-features = false, features = [
+  "custom_syntax",
+  "fuel",
+  "serde",
+] }
 
 [dev-dependencies]
 assert_cmd = "2"
