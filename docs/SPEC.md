@@ -1036,6 +1036,11 @@ Templated files are detected automatically by scanning for the opening
 delimiters `{~`, `{%~`, or `{#~`. Authors do not need to declare which files
 use templating.
 
+> **Note:** Since detection uses simple string matching, files containing these
+> delimiter sequences as literal text (e.g., in documentation explaining Jolene
+> syntax) will be incorrectly treated as templated. The custom delimiters with
+> tildes make this unlikely in practice.
+
 - **Commands/Agents:** The `.md` file is scanned.
 - **Skills:** Every file in the skill directory is scanned recursively. If any
   file contains a template expression, the entire skill directory is rendered

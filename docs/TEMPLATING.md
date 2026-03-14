@@ -427,6 +427,11 @@ Jolene scans each content file for the opening delimiters `{~`, `{%~`, or
 `{#~`. Files that contain at least one delimiter are marked as templated.
 Authors do not need to declare which files use templating.
 
+> **Note:** Since detection uses simple string matching, files containing these
+> delimiter sequences as literal text (e.g., in documentation explaining Jolene
+> syntax) will be incorrectly treated as templated. The custom delimiters with
+> tildes make this unlikely in practice.
+
 - **Commands and agents:** The single `.md` file is scanned.
 - **Skills:** Every file in the skill directory is scanned recursively. If
   *any* file contains a template expression, the *entire* skill directory is
