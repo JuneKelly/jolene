@@ -19,26 +19,26 @@ enough in practice.
 
 ## 002 - Inconsistent `--pick` syntax in marketplace install command
 
-**Location:** SPEC.md lines 101 vs 106
+**Location:** SPEC.md lines 101 vs 106 (now resolved)
 
-**Problem:** The CLI syntax for `--pick` is contradictory between two sections:
+**Problem:** The CLI syntax for `--pick` was contradictory between two sections:
 
-Line 101 shows:
-
+Line 101 showed:
 ```
 jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...]
 ```
-
 This indicates comma-separated values in a single argument.
 
-But line 106 says:
+But line 106 said:
 > `--pick <name>` — Select plugins from the marketplace catalog. **Repeatable.** Comma-separated. Required when `--marketplace` is set.
 
-The word "Repeatable" implies you can use `--pick foo --pick bar`, but the syntax shows comma-separated format. These contradict each other.
+The word "Repeatable" implied you can use `--pick foo --pick bar`, but the syntax showed comma-separated format. These contradicted each other.
 
-**Impact:** Users won't know whether to use `--pick foo,bar` or `--pick foo --pick bar`.
+**Resolution (2026-03-14):** Both formats now work:
+- CLI implementation (`src/cli.rs`) uses `value_delimiter = ','` which parses both `foo,bar` and `--pick foo --pick bar`
+- SPEC.md updated to clarify both formats are supported
 
-**Resolution needed:** Decide on one format and update both the syntax line and the description.
+**Status:** RESOLVED
 
 ---
 

@@ -103,8 +103,7 @@ jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [
 
 - `--marketplace` — Treat the source as a Claude Code marketplace repository
   (expects `.claude-plugin/marketplace.json`).
-- `--pick <name>` — Select plugins from the marketplace catalog. Comma-separated.
-  Required when `--marketplace` is set.
+- `--pick <name>` — Select plugins from the marketplace catalog. Accepts comma-separated values (`--pick foo,bar`) or repeatable flags (`--pick foo --pick bar`). Required when `--marketplace` is set.
 
 **Process:**
 
