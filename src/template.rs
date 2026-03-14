@@ -604,8 +604,9 @@ pub fn validate_stored_overrides(
             None => {
                 let available = declared_var_list(declared);
                 bail!(
-                    "Stored variable override '{}' is no longer declared in [template.vars].\n  The package update removed this variable. Re-install with corrected overrides:\n    jolene install --reinstall {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
+                    "Stored variable override '{}' is no longer declared in [template.vars].\n  The package update removed this variable. Uninstall and reinstall with corrected overrides:\n    jolene uninstall {} && jolene install {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
                     key,
+                    source_kind_flag,
                     source_kind_flag,
                     available
                 );
@@ -614,10 +615,11 @@ pub fn validate_stored_overrides(
                 if !val.type_matches(declared_val) {
                     let available = declared_var_list(declared);
                     bail!(
-                        "Stored variable override '{}' has type {}, but [template.vars]\n  now declares it as {}. Re-install with corrected overrides:\n    jolene install --reinstall {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
+                        "Stored variable override '{}' has type {}, but [template.vars]\n  now declares it as {}. Uninstall and reinstall with corrected overrides:\n    jolene uninstall {} && jolene install {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
                         key,
                         val.type_label(),
                         declared_val.type_label(),
+                        source_kind_flag,
                         source_kind_flag,
                         available
                     );

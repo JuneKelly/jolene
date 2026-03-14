@@ -310,8 +310,8 @@ After `git pull`, re-render before re-symlinking:
     - Before re-rendering, validate var_overrides against the updated
       [template.vars]. If any stored override key is no longer declared,
       or its declared type changed and the stored value no longer matches,
-      abort with an error directing the user to re-install with corrected
-      overrides: `jolene install --reinstall [--var ...] [--vars-json ...]`.
+      abort with an error directing the user to uninstall and reinstall with corrected
+      overrides: `jolene uninstall <pkg> && jolene install [--var ...] [--vars-json ...]`.
     - Re-render all templated items using var_overrides stored in state.
     - Write new rendered copies (overwriting existing in rendered/{hash}/).
     - Items previously templated (templated: true in their SymlinkEntry) but
@@ -419,8 +419,8 @@ Error: --vars-json: key 'status' has a null value, which is not supported.
 
 ```
 Error: Stored variable override 'old_key' is no longer declared in [template.vars].
-  The package update removed this variable. Re-install with corrected overrides:
-    jolene install --reinstall --github owner/repo [--var key=value] [--vars-json ...]
+  The package update removed this variable. Uninstall and reinstall with corrected overrides:
+    jolene uninstall owner/repo && jolene install --github owner/repo [--var key=value] [--vars-json ...]
   Declared vars: doc_url, model_hint
 ```
 
@@ -428,8 +428,8 @@ Error: Stored variable override 'old_key' is no longer declared in [template.var
 
 ```
 Error: Stored variable override 'show_advanced' has type bool, but [template.vars]
-  now declares it as string. Re-install with corrected overrides:
-    jolene install --reinstall --github owner/repo [--var key=value] [--vars-json ...]
+  now declares it as string. Uninstall and reinstall with corrected overrides:
+    jolene uninstall owner/repo && jolene install --github owner/repo [--var key=value] [--vars-json ...]
   Declared vars: doc_url, model_hint, show_advanced
 ```
 
