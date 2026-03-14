@@ -1203,8 +1203,8 @@ Error: --vars-json: key 'status' has a null value, which is not supported.
 
 ```
 Error: Stored variable override 'old_key' is no longer declared in [template.vars].
-  The package update removed this variable. Re-install with corrected overrides:
-    jolene install --reinstall --github owner/repo [--var key=value] [--vars-json ...]
+  The package update removed this variable. Uninstall and reinstall with corrected overrides:
+    jolene uninstall owner/repo && jolene install --github owner/repo [--var key=value] [--vars-json ...]
   Declared vars: doc_url, model_hint
 ```
 
