@@ -775,31 +775,42 @@ clone URLs and filesystem paths.
    Read .claude-plugin/marketplace.json. Error if missing.
    Validate that --pick names exist in the catalog.
 
-4. FOR EACH PICKED PLUGIN:
+4. RESOLVE PREFIX
+   - --no-prefix → None (always flat)
+   - --prefix X → Some("X") (validated)
+   - Neither flag → None. Marketplace plugins have no jolene.toml, so there
+     is no manifest prefix fallback; the prefix is always CLI-driven.
 
-   4a. RESOLVE PLUGIN SOURCE
+5. RESOLVE TARGETS
+   Same as native install step 5.
+
+6. FOR EACH PICKED PLUGIN:
+
+   6a. RESOLVE PLUGIN SOURCE
        - Relative: resolve to subdirectory within the marketplace clone.
        - GitHub/URL: clone independently into its own store directory.
        - npm/pip: error (not supported).
 
-   4b. DETECT IGNORED FEATURES
+   6b. DETECT IGNORED FEATURES
        Check for hooks.json, .mcp.json, .lsp.json.
        Warn user if present.
 
-   4c. DISCOVER CONTENT
+   6c. DISCOVER CONTENT
        Scan plugin directory for commands/*.md, skills/*/SKILL.md, agents/*.md.
        Skip plugin if no installable content found.
 
-   4d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
+   6d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
        Same as step 3b above, applied to each discovered skill.
 
-   4e. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
+   6e. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
        Same as step 3c above, applied to each discovered agent.
 
-   4f. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
-       Same as native install (steps 4-7 above).
+   6f. CHECK CONFLICTS, CREATE DIRECTORIES, CREATE SYMLINKS
+       Same as native install steps 6–8. Templating (native steps 3e and 5b)
+       is not applied — marketplace content is installed as-is, with symlinks
+       pointing directly to repos/.
 
-   4g. RECORD STATE
+   6g. RECORD STATE
        Store with marketplace provenance fields.
        Relative plugins use composite source: "org/marketplace::plugin-name".
        External plugins use their own source identity.
