@@ -973,7 +973,16 @@ Prefix resolution order:
 3. Neither flag → use manifest `prefix` if set, else flat
 
 The prefix is locked at install time and stored in `state.json`. `jolene update`
-preserves the stored prefix. To change prefix, uninstall and reinstall.
+preserves the stored prefix and re-validates it against current rules. To change
+prefix, uninstall and reinstall.
+
+**Prefix and manifest changes on update:** If the package author changes or
+removes the `prefix` field in `jolene.toml` between versions, it has no effect
+on existing installs — the stored prefix is always used. This is intentional:
+the user's install-time choice takes precedence over the manifest default.
+If the stored prefix fails re-validation (possible only if the state file was
+manually edited), `jolene update` aborts with an error directing the user to
+reinstall.
 
 ### Absolute Paths
 

@@ -134,6 +134,14 @@ Currently, the stored prefix is used directly without checking against current m
 
 Document this behavior explicitly.
 
+**Resolution (2026-03-15):**
+
+- The stored prefix is re-validated against current rules in `update_one` (`src/commands/update.rs`). A prefix valid at install time will always pass re-validation under the stable rules, so this only catches manual state file corruption.
+- Manifest prefix changes (author adds, removes, or changes `[package].prefix`) have no effect on existing installs — the stored prefix is always authoritative. This is by design and is now documented explicitly in SPEC.md.
+- To change the prefix, the user must uninstall and reinstall.
+
+**Status:** RESOLVED
+
 ---
 
 ## 007 - Unclear "pre-existing entries" for `source_kind` default
