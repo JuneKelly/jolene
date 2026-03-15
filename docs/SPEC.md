@@ -34,8 +34,8 @@ Jolene supports three install source types:
 | Skills       | `skills/*/`       | `~/.claude/skills/`    | `~/.config/opencode/skills/`    | `~/.codex/skills/`   |
 | Agents       | `agents/*.md`     | `~/.claude/agents/`    | `~/.config/opencode/agents/`    | not supported        |
 
-When a content type is not supported by a target, jolene skips it silently.
-In verbose mode, it prints a notice.
+When a content type is not supported by a target, jolene skips it and prints
+a warning so the user knows the package is only partially installed.
 
 ---
 
@@ -902,11 +902,11 @@ symlink_destination:       /Users/you/.config/opencode/commands/review.md
 ### Unsupported Content
 
 When installing to a target that doesn't support a content type, jolene skips
-silently. With `--verbose`:
+that content and prints a warning:
 
 ```
-  Skipping 1 command for codex (not supported)
-  Skipping 1 agent for codex (not supported)
+  Warning: skipping 1 command for codex (not supported by this target)
+  Warning: skipping 1 agent for codex (not supported by this target)
 ```
 
 ---

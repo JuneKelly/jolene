@@ -535,16 +535,16 @@ fn plan_all_targets(ctx: &PlanAllTargetsContext<'_>) -> Result<(Vec<TargetStage>
             .count();
 
         if skipped_commands > 0 {
-            ctx.out.verbose(format!(
-                "  Skipping {} command{} for {} (not supported)",
+            ctx.out.print(format!(
+                "  Warning: skipping {} command{} for {} (not supported by this target)",
                 skipped_commands,
                 if skipped_commands == 1 { "" } else { "s" },
                 target
             ));
         }
         if skipped_agents > 0 {
-            ctx.out.verbose(format!(
-                "  Skipping {} agent{} for {} (not supported)",
+            ctx.out.print(format!(
+                "  Warning: skipping {} agent{} for {} (not supported by this target)",
                 skipped_agents,
                 if skipped_agents == 1 { "" } else { "s" },
                 target

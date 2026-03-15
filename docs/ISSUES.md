@@ -105,11 +105,9 @@ Consider this scenario:
 
 This could produce confusing behavior where templates resolve to names that don't actually exist in the target's installation.
 
-**Recommendation:** Either:
+**Resolution (2026-03-15):** The root issue is that partial installs were silent. Patching `resolve()` would treat a symptom. Instead, the skip warnings in `plan_all_targets()` (`install.rs`) were promoted from `verbose`-only to always-visible, with a `Warning:` prefix. Users now see immediately when a package is only partially supported by the chosen target, and can decide whether to proceed. SPEC.md updated accordingly.
 
-1. Add `jolene.resolve("name", "command")` validation — error if that content type isn't supported by `jolene.target`
-2. Document that `resolve()` returns the installed name regardless of whether the content type is installed
-3. Skip running templates for unsupported content types entirely
+**Status:** RESOLVED
 
 ---
 
