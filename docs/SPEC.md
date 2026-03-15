@@ -560,9 +560,9 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
 | Field         | Description                                                    |
 |---------------|----------------------------------------------------------------|
-| `source_kind` | `"github"` \| `"local"` \| `"url"`. Defaults to `"github"` for pre-existing entries. |
+| `source_kind` | `"github"` \| `"local"` \| `"url"`. Always present for packages installed with current jolene. Defaults to `"github"` when absent — this handles state files that predate the field (entries from the legacy `state.toml` format before the SHA256 store was introduced). Safe default because the legacy format only recorded GitHub packages. |
 | `source`      | Human-readable identifier. For native packages: `owner/repo`, absolute path, or URL. For relative marketplace plugins: `owner/marketplace::plugin-name`. Used for display and lookup. |
-| `clone_url`   | The git URL used to clone the package. Absent for pre-existing entries. |
+| `clone_url`   | The git URL used to clone the package. Absent for entries migrated from the legacy `state.toml` format. |
 | `clone_path`  | `repos/{64-char-hex}` — relative to `~/.jolene/`. The hex is the SHA256 store key. |
 
 **Marketplace provenance fields** (optional, present only for marketplace-sourced packages):

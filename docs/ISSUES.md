@@ -169,6 +169,12 @@ But the spec doesn't explain:
 2. Document the migration strategy (if any) for old state files
 3. Consider whether `source_kind` should be required for all new installations rather than having a default
 
+**Resolution (2026-03-15):**
+
+"Pre-existing entries" means `PackageState` records in state files that predate the addition of the `source_kind` field (state files from the legacy `state.toml` era, before the opaque SHA256 store was introduced). The `#[serde(default)]` attribute on `source_kind` handles deserialization of such entries by falling back to `SourceKind::GitHub`, which is correct because the legacy format only recorded GitHub packages. The explicit `state.toml` → `state.json` migration in `state.rs` also relies on this default. All packages installed with current jolene have `source_kind` set explicitly. SPEC.md updated to define the term and explain the rationale.
+
+**Status:** RESOLVED
+
 ---
 
 ## 008 - Marketplace install references wrong step numbers
