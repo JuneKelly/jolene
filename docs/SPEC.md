@@ -1129,12 +1129,28 @@ Error: Conflict installing junebug/my-tools to claude-code:
 
 ### Ambiguous Package Name
 
+Native packages (same repo name from different owners):
+
 ```
 Error: Ambiguous name 'review-tools'. Multiple matches:
   author-a/review-tools
   author-b/review-tools
 
-  Use the full Author/repo format.
+  Use the full identifier:
+    owner/repo (native packages)
+    org/marketplace::plugin-name (marketplace plugins)
+```
+
+Marketplace plugins (same plugin name from different marketplaces):
+
+```
+Error: Ambiguous name 'review-plugin'. Multiple matches:
+  acme-corp/tools::review-plugin
+  other-corp/plugins::review-plugin
+
+  Use the full identifier:
+    owner/repo (native packages)
+    org/marketplace::plugin-name (marketplace plugins)
 ```
 
 ### Missing Marketplace Manifest

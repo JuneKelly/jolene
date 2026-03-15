@@ -128,7 +128,7 @@ pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a Packa
         _ => {
             let names: Vec<_> = matches.iter().map(|p| format!("  {}", p.source)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full owner/repo format.",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native packages)\n    org/marketplace::plugin-name (marketplace plugins)",
                 name,
                 names.join("\n")
             );
@@ -164,7 +164,7 @@ pub fn find_package_mut<'a>(
         _ => {
             let names: Vec<_> = matches.iter().map(|s| format!("  {}", s)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full owner/repo format.",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native packages)\n    org/marketplace::plugin-name (marketplace plugins)",
                 name,
                 names.join("\n")
             );

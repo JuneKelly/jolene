@@ -84,6 +84,10 @@ But if two different marketplace repos both have a plugin named "review-plugin",
 2. Add a `--from-marketplace` flag to disambiguate
 3. Require marketplace plugins to always be referenced as `marketplace::plugin` in update commands
 
+**Resolution (2026-03-15):** The fully-qualified composite source key (`acme-corp/tools::review-plugin`) already resolves the collision — `find_package` exact-matches on `p.source` when the argument contains `/`. The error message and SPEC.md have been updated to explain both resolution formats (`owner/repo` for native, `org/marketplace::plugin-name` for marketplace).
+
+**Status:** RESOLVED
+
 ---
 
 ## 005 - `jolene.resolve()` doesn't validate target support
