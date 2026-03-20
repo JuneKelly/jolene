@@ -200,7 +200,7 @@ TOML handles this naturally with inline tables and arrays.
 ### Naming Convention
 
 Jolene already uses `jolene.toml` for package manifests. A parallel naming
-convention for the requirements file would be `jolene.requirements` — clearly
+convention for the requirements file would be `jolene-requirements.toml` — clearly
 Jolene-specific, distinct from the manifest, and recognisable as a file that
 declares intent (what should be installed) rather than what a package provides.
 
@@ -208,12 +208,12 @@ Alternative names considered:
 
 | Name | Notes |
 |------|-------|
-| `jolene.requirements` | Follows `jolene.toml` convention; clearly not a package manifest |
+| `jolene-requirements.toml` | Follows `jolene.toml` convention; clearly not a package manifest |
 | `.jolene` | Shorter dotfile; echoes `.tool-versions`; less discoverable |
 | `jolene.packages` | Clear but slightly redundant |
 | `jolene.install` | Reads as a verb, which is odd for a config file |
 
-`jolene.requirements` is preferred.
+`jolene-requirements.toml` is preferred.
 
 ### Command: `jolene sync` vs. `jolene install` (no args)
 
@@ -223,7 +223,7 @@ arguments would be a surprising behavioural change.
 
 A new verb, `jolene sync`, is cleaner:
 
-- Reads `jolene.requirements` in the current directory (error if not found)
+- Reads `jolene-requirements.toml` in the current directory (error if not found)
 - Installs each package that is not already installed
 - Skips packages that are already installed at the right state
 - Does not automatically update packages (that's `jolene update`)
@@ -298,7 +298,7 @@ Using TOML with an array of tables. Each `[[package]]` entry maps directly to
 a `jolene install` invocation.
 
 ```toml
-# jolene.requirements
+# jolene-requirements.toml
 # Jolene packages required to work on this project.
 # Run `jolene sync` to install.
 
@@ -365,10 +365,10 @@ The safest MVP answer is: warn and skip (matching the behaviour of `pip install 
 when a package is already at a compatible version). The user can run
 `jolene uninstall` and re-sync if they want to change the prefix.
 
-**2. Should `jolene install` detect `jolene.requirements` as a shorthand?**
+**2. Should `jolene install` detect `jolene-requirements.toml` as a shorthand?**
 
 Symmetry with how `cargo build` auto-discovers `Cargo.toml` might suggest that
-`jolene install` (no args) could also look for `jolene.requirements`. However,
+`jolene install` (no args) could also look for `jolene-requirements.toml`. However,
 this breaks the existing argument parsing contract (exactly one source flag
 required). A separate `sync` command is cleaner.
 
@@ -389,8 +389,8 @@ would be useful for CI and for reviewing before running. This is analogous to
 
 **5. How should `local` paths be resolved?**
 
-When `local = "./shared-tools"` appears in `jolene.requirements`, the path
-should be resolved relative to the directory containing `jolene.requirements`,
+When `local = "./shared-tools"` appears in `jolene-requirements.toml`, the path
+should be resolved relative to the directory containing `jolene-requirements.toml`,
 not the current working directory. This is consistent with how `Cargo.toml`
 handles path dependencies.
 
@@ -431,7 +431,7 @@ natively supports arrays and inline tables, making this unnecessary.
 **8. Should there be a `jolene add` command to append to the requirements file?**
 
 `npm install <pkg>` appends to `package.json`. A `jolene add --github owner/repo`
-that installs and appends to `jolene.requirements` would be ergonomic. This is
+that installs and appends to `jolene-requirements.toml` would be ergonomic. This is
 optional for MVP — manual editing is sufficient — but worth designing for
 compatibility.
 
@@ -441,9 +441,9 @@ compatibility.
 
 The implementation involves three main additions:
 
-### 1. `jolene.requirements` parser (`src/requirements.rs`)
+### 1. `jolene-requirements.toml` parser (`src/requirements.rs`)
 
-A new module that reads and parses `jolene.requirements` into a `Requirements`
+A new module that reads and parses `jolene-requirements.toml` into a `Requirements`
 struct. Each `PackageRequirement` closely mirrors the `install` command's
 argument structure, so validation can reuse existing logic (prefix validation,
 target slug parsing, var type checking).
@@ -452,7 +452,7 @@ target slug parsing, var type checking).
 
 The new command:
 
-1. Find `jolene.requirements` in the current directory (error if absent)
+1. Find `jolene-requirements.toml` in the current directory (error if absent)
 2. Parse it into a list of `PackageRequirement` entries
 3. Load the current state (read-only pass)
 4. For each requirement: determine if the package is already installed with
@@ -484,5 +484,5 @@ optional `--check` / `--dry-run` flag.
   support (checkout after clone). This is independent of the requirements file
   format itself and can be added later.
 - **`jolene doctor`:** Could be extended to warn when installed packages are
-  not covered by `jolene.requirements` (orphan detection for requirements-managed
+  not covered by `jolene-requirements.toml` (orphan detection for requirements-managed
   installs).
