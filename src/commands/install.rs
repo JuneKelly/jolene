@@ -117,7 +117,9 @@ pub fn run(
         template::parse_and_validate_var_overrides(var_flags, vars_json_flags, &declared_vars)?;
 
     // 3d. Scan for templates
-    template::scan_content_items(&mut items, &clone_root)?;
+    let exclude: std::collections::HashSet<&str> =
+        manifest.template_exclude().iter().map(String::as_str).collect();
+    template::scan_content_items(&mut items, &clone_root, &exclude)?;
 
     // Content quality checks (advisory)
     content_check::check_and_warn_skills(&items, &clone_root, out, "  ");

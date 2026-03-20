@@ -112,7 +112,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 2b. Re-scan and re-render (native packages only)
     if let Some(ref manifest) = manifest {
-        template::scan_content_items(&mut items, &content_dir)?;
+        let exclude: std::collections::HashSet<&str> =
+            manifest.template_exclude().iter().map(String::as_str).collect();
+        template::scan_content_items(&mut items, &content_dir, &exclude)?;
 
         let declared_vars = manifest.template_vars()?;
 

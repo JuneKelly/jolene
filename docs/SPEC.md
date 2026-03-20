@@ -1059,12 +1059,25 @@ use templating.
 > **Note:** Since detection uses simple string matching, files containing these
 > delimiter sequences as literal text (e.g., in documentation explaining Jolene
 > syntax) will be incorrectly treated as templated. The custom delimiters with
-> tildes make this unlikely in practice.
+> tildes make this unlikely in practice. Use `[template] exclude` to opt out
+> when this occurs.
 
 - **Commands/Agents:** The `.md` file is scanned.
 - **Skills:** Every file in the skill directory is scanned recursively. If any
   file contains a template expression, the entire skill directory is rendered
   (templated files are rendered; non-templated files are copied as-is).
+
+**Opting out:** Authors can prevent specific content items from being treated
+as templates by listing them in `[template] exclude` in `jolene.toml`:
+
+```toml
+[template]
+exclude = ["syntax-guide"]  # never scanned; symlinked to repos/ as-is
+```
+
+Items in `exclude` are never scanned or rendered — their symlinks always point
+to `repos/` regardless of file content. Names in `exclude` must match items
+declared in `[content]`; an unknown name is an error.
 
 ### Example
 
