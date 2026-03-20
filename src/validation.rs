@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -153,6 +154,29 @@ pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
                 name,
                 name
             );
+        }
+    }
+
+    let exclude = manifest.template_exclude();
+    if !exclude.is_empty() {
+        let all_names: HashSet<&str> = manifest.content.commands.iter()
+            .chain(manifest.content.skills.iter())
+            .chain(manifest.content.agents.iter())
+            .map(String::as_str)
+            .collect();
+        for name in exclude {
+            if !all_names.contains(name.as_str()) {
+                let declared: Vec<String> = manifest.content.commands.iter()
+                    .map(|n| format!("{} (command)", n))
+                    .chain(manifest.content.skills.iter().map(|n| format!("{} (skill)", n)))
+                    .chain(manifest.content.agents.iter().map(|n| format!("{} (agent)", n)))
+                    .collect();
+                bail!(
+                    "Invalid jolene.toml: [template.exclude] name '{}' is not declared in [content].\n  Declared content: {}",
+                    name,
+                    declared.join(", ")
+                );
+            }
         }
     }
 
@@ -371,5 +395,70 @@ mod tests {
     fn resolve_manifest_prefix_validates() {
         let result = resolve_prefix(None, false, Some("INVALID"));
         assert!(result.is_err());
+    }
+
+    // validate_manifest [template.exclude] tests
+
+    use std::collections::BTreeMap;
+    use crate::types::manifest::{ContentDecl, Manifest, Package, TemplateDecl};
+
+    fn make_manifest(commands: &[&str], exclude: &[&str]) -> Manifest {
+        Manifest {
+            package: Package {
+                name: "test".to_string(),
+                description: "test".to_string(),
+                version: "1.0.0".to_string(),
+                authors: vec![],
+                license: "MIT".to_string(),
+                urls: None,
+                prefix: None,
+            },
+            content: ContentDecl {
+                commands: commands.iter().map(|s| s.to_string()).collect(),
+                skills: vec![],
+                agents: vec![],
+            },
+            template: if exclude.is_empty() {
+                None
+            } else {
+                Some(TemplateDecl {
+                    vars: BTreeMap::new(),
+                    exclude: exclude.iter().map(|s| s.to_string()).collect(),
+                })
+            },
+        }
+    }
+
+    fn setup_command(dir: &std::path::Path, name: &str) {
+        let commands_dir = dir.join("commands");
+        std::fs::create_dir_all(&commands_dir).unwrap();
+        std::fs::write(commands_dir.join(format!("{}.md", name)), "# content").unwrap();
+    }
+
+    #[test]
+    fn validate_manifest_exclude_known_command_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_command(dir.path(), "review");
+        let m = make_manifest(&["review"], &["review"]);
+        assert!(validate_manifest(&m, dir.path()).is_ok());
+    }
+
+    #[test]
+    fn validate_manifest_exclude_empty_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_command(dir.path(), "review");
+        let m = make_manifest(&["review"], &[]);
+        assert!(validate_manifest(&m, dir.path()).is_ok());
+    }
+
+    #[test]
+    fn validate_manifest_exclude_unknown_name_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        setup_command(dir.path(), "review");
+        let m = make_manifest(&["review"], &["typo"]);
+        let err = validate_manifest(&m, dir.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("[template.exclude]"), "expected [template.exclude] in: {msg}");
+        assert!(msg.contains("typo"), "expected 'typo' in: {msg}");
     }
 }

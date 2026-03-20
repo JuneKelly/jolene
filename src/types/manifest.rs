@@ -19,9 +19,21 @@ pub struct Manifest {
 pub struct TemplateDecl {
     #[serde(default)]
     pub vars: BTreeMap<String, toml::Value>,
+    /// Content item names that must never be treated as templates, regardless
+    /// of whether their files contain template delimiters. Useful when a file
+    /// contains literal `{~` or `{%~` sequences that are not Jolene syntax
+    /// (e.g., documentation that explains Jolene's own template syntax).
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 impl Manifest {
+    /// Returns the list of content item names excluded from template detection.
+    /// Returns an empty slice when no `[template]` section is present.
+    pub fn template_exclude(&self) -> &[String] {
+        self.template.as_ref().map_or(&[], |t| t.exclude.as_slice())
+    }
+
     /// Convert the raw TOML `[template.vars]` into typed `VarValue` entries.
     pub fn template_vars(&self) -> Result<BTreeMap<String, VarValue>> {
         let Some(ref tmpl) = self.template else {
@@ -180,6 +192,66 @@ mod tests {
         assert_eq!(
             decl(&["review"], &["analysis", "style"], &["reviewer"]).summary(),
             "1 command, 2 skills, 1 agent"
+        );
+    }
+
+    // template_exclude tests
+
+    fn manifest_with_exclude(exclude: &[&str]) -> Manifest {
+        Manifest {
+            package: Package {
+                name: "test".to_string(),
+                description: "test".to_string(),
+                version: "1.0.0".to_string(),
+                authors: vec![],
+                license: "MIT".to_string(),
+                urls: None,
+                prefix: None,
+            },
+            content: ContentDecl::default(),
+            template: Some(TemplateDecl {
+                vars: BTreeMap::new(),
+                exclude: exclude.iter().map(|s| s.to_string()).collect(),
+            }),
+        }
+    }
+
+    #[test]
+    fn template_exclude_absent_returns_empty() {
+        let m = Manifest {
+            package: Package {
+                name: "test".to_string(),
+                description: "test".to_string(),
+                version: "1.0.0".to_string(),
+                authors: vec![],
+                license: "MIT".to_string(),
+                urls: None,
+                prefix: None,
+            },
+            content: ContentDecl::default(),
+            template: None,
+        };
+        assert!(m.template_exclude().is_empty());
+    }
+
+    #[test]
+    fn template_exclude_present_no_key_returns_empty() {
+        let m = manifest_with_exclude(&[]);
+        assert!(m.template_exclude().is_empty());
+    }
+
+    #[test]
+    fn template_exclude_returns_single_name() {
+        let m = manifest_with_exclude(&["review"]);
+        assert_eq!(m.template_exclude(), &["review".to_string()]);
+    }
+
+    #[test]
+    fn template_exclude_returns_multiple_names() {
+        let m = manifest_with_exclude(&["review", "code-analysis"]);
+        assert_eq!(
+            m.template_exclude(),
+            &["review".to_string(), "code-analysis".to_string()]
         );
     }
 }

@@ -14,7 +14,7 @@ use crate::template;
 use crate::types::content::ContentItem;
 use crate::types::content::ContentType;
 use crate::types::state::State;
-use crate::validation::{collect_content_items, load_manifest, validate_manifest};
+use crate::validation::{collect_content_items, load_manifest, validate_manifest, validate_prefix};
 
 pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
     let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
@@ -56,6 +56,19 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let is_marketplace = pkg.marketplace.is_some();
     let plugin_path = pkg.plugin_path.clone();
     let prefix = pkg.prefix.clone();
+
+    // Re-validate stored prefix against current rules.  A prefix that was
+    // valid at install time will always remain valid under the current rules,
+    // so this only fires if the state file was manually edited.
+    if let Some(ref p) = prefix {
+        validate_prefix(p).with_context(|| {
+            format!(
+                "Stored prefix '{}' for package '{}' is no longer valid.\n  Uninstall and reinstall to reset the prefix:\n    jolene uninstall {}",
+                p, source, source
+            )
+        })?;
+    }
+
     let stored_overrides = pkg.var_overrides.clone();
     let pkg_source = pkg.source.clone();
     let source_kind = pkg.source_kind.clone();
@@ -99,7 +112,9 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 2b. Re-scan and re-render (native packages only)
     if let Some(ref manifest) = manifest {
-        template::scan_content_items(&mut items, &content_dir)?;
+        let exclude: std::collections::HashSet<&str> =
+            manifest.template_exclude().iter().map(String::as_str).collect();
+        template::scan_content_items(&mut items, &content_dir, &exclude)?;
 
         let declared_vars = manifest.template_vars()?;
 

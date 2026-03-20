@@ -2256,3 +2256,121 @@ max_retries = 3
         .failure()
         .stderr(predicate::str::contains("doc_url"));
 }
+
+/// Package with a command that contains literal Jolene delimiter text, excluded
+/// from template rendering via `[template] exclude`.
+fn create_package_with_excluded_item(dir: &Path) {
+    fs::create_dir_all(dir.join("commands")).unwrap();
+    fs::write(
+        dir.join("jolene.toml"),
+        r#"[package]
+name = "syntax-docs"
+description = "Package with literal template delimiter text"
+version = "1.0.0"
+authors = ["test"]
+license = "MIT"
+
+[content]
+commands = ["guide"]
+
+[template]
+exclude = ["guide"]
+"#,
+    )
+    .unwrap();
+    // The command contains literal {~ ... ~} text — without the exclude flag this
+    // would cause a MiniJinja syntax error at install time.
+    fs::write(
+        dir.join("commands/guide.md"),
+        "Use {~ jolene.resolve(\"name\") ~} syntax in your templates.\n",
+    )
+    .unwrap();
+    git_in(dir, &["init", "-b", "main"]);
+    git_in(dir, &["add", "."]);
+    git_in(dir, &["commit", "-m", "init"]);
+}
+
+#[test]
+fn excluded_item_with_delimiters_installs_without_error() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_package_with_excluded_item(pkg_dir.path());
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    // Symlink should point to repos/, not rendered/ (excluded from rendering).
+    let cmd_link = claude_root.join("commands/guide.md");
+    assert!(cmd_link.is_symlink(), "command symlink should exist");
+    let cmd_target = fs::read_link(&cmd_link).unwrap();
+    assert!(
+        !cmd_target.to_string_lossy().contains("rendered"),
+        "excluded item should point to repos/, not rendered: {}",
+        cmd_target.display()
+    );
+
+    // File content should be the literal text, not rendered output.
+    let content = fs::read_to_string(&cmd_link).unwrap();
+    assert!(
+        content.contains("{~ jolene.resolve("),
+        "excluded item should contain literal delimiter text: {content}"
+    );
+}
+
+#[test]
+fn exclude_unknown_name_rejects_install() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+
+    fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
+    fs::write(
+        pkg_dir.path().join("jolene.toml"),
+        r#"[package]
+name = "test"
+description = "test"
+version = "1.0.0"
+authors = ["test"]
+license = "MIT"
+
+[content]
+commands = ["deploy"]
+
+[template]
+exclude = ["nonexistent"]
+"#,
+    )
+    .unwrap();
+    fs::write(pkg_dir.path().join("commands/deploy.md"), "# deploy").unwrap();
+    git_in(pkg_dir.path(), &["init", "-b", "main"]);
+    git_in(pkg_dir.path(), &["add", "."]);
+    git_in(pkg_dir.path(), &["commit", "-m", "init"]);
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("[template.exclude]"))
+        .stderr(predicate::str::contains("nonexistent"));
+}

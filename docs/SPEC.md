@@ -34,8 +34,8 @@ Jolene supports three install source types:
 | Skills       | `skills/*/`       | `~/.claude/skills/`    | `~/.config/opencode/skills/`    | `~/.codex/skills/`   |
 | Agents       | `agents/*.md`     | `~/.claude/agents/`    | `~/.config/opencode/agents/`    | not supported        |
 
-When a content type is not supported by a target, jolene skips it silently.
-In verbose mode, it prints a notice.
+When a content type is not supported by a target, jolene skips it and prints
+a warning so the user knows the package is only partially installed.
 
 ---
 
@@ -103,8 +103,7 @@ jolene install --marketplace --github <org/repo> --pick <plugin>[,<plugin>...] [
 
 - `--marketplace` — Treat the source as a Claude Code marketplace repository
   (expects `.claude-plugin/marketplace.json`).
-- `--pick <name>` — Select plugins from the marketplace catalog. Comma-separated.
-  Required when `--marketplace` is set.
+- `--pick <name>` — Select plugins from the marketplace catalog. Accepts comma-separated values (`--pick foo,bar`) or repeatable flags (`--pick foo --pick bar`). Required when `--marketplace` is set.
 
 **Process:**
 
@@ -561,9 +560,9 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
 | Field         | Description                                                    |
 |---------------|----------------------------------------------------------------|
-| `source_kind` | `"github"` \| `"local"` \| `"url"`. Defaults to `"github"` for pre-existing entries. |
+| `source_kind` | `"github"` \| `"local"` \| `"url"`. Always present for packages installed with current jolene. Defaults to `"github"` when absent — this handles state files that predate the field (entries from the legacy `state.toml` format before the SHA256 store was introduced). Safe default because the legacy format only recorded GitHub packages. |
 | `source`      | Human-readable identifier. For native packages: `owner/repo`, absolute path, or URL. For relative marketplace plugins: `owner/marketplace::plugin-name`. Used for display and lookup. |
-| `clone_url`   | The git URL used to clone the package. Absent for pre-existing entries. |
+| `clone_url`   | The git URL used to clone the package. Absent for entries migrated from the legacy `state.toml` format. |
 | `clone_path`  | `repos/{64-char-hex}` — relative to `~/.jolene/`. The hex is the SHA256 store key. |
 
 **Marketplace provenance fields** (optional, present only for marketplace-sourced packages):
@@ -776,31 +775,42 @@ clone URLs and filesystem paths.
    Read .claude-plugin/marketplace.json. Error if missing.
    Validate that --pick names exist in the catalog.
 
-4. FOR EACH PICKED PLUGIN:
+4. RESOLVE PREFIX
+   - --no-prefix → None (always flat)
+   - --prefix X → Some("X") (validated)
+   - Neither flag → None. Marketplace plugins have no jolene.toml, so there
+     is no manifest prefix fallback; the prefix is always CLI-driven.
 
-   4a. RESOLVE PLUGIN SOURCE
+5. RESOLVE TARGETS
+   Same as native install step 5.
+
+6. FOR EACH PICKED PLUGIN:
+
+   6a. RESOLVE PLUGIN SOURCE
        - Relative: resolve to subdirectory within the marketplace clone.
        - GitHub/URL: clone independently into its own store directory.
        - npm/pip: error (not supported).
 
-   4b. DETECT IGNORED FEATURES
+   6b. DETECT IGNORED FEATURES
        Check for hooks.json, .mcp.json, .lsp.json.
        Warn user if present.
 
-   4c. DISCOVER CONTENT
+   6c. DISCOVER CONTENT
        Scan plugin directory for commands/*.md, skills/*/SKILL.md, agents/*.md.
        Skip plugin if no installable content found.
 
-   4d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
+   6d. SKILL QUALITY CHECKS (advisory — warnings only, never blocks install)
        Same as step 3b above, applied to each discovered skill.
 
-   4e. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
+   6e. AGENT QUALITY CHECKS (advisory — warnings only, never blocks install)
        Same as step 3c above, applied to each discovered agent.
 
-   4f. RESOLVE TARGETS, CHECK CONFLICTS, CREATE SYMLINKS
-       Same as native install (steps 4-7 above).
+   6f. CHECK CONFLICTS, CREATE DIRECTORIES, CREATE SYMLINKS
+       Same as native install steps 6–8. Templating (native steps 3e and 5b)
+       is not applied — marketplace content is installed as-is, with symlinks
+       pointing directly to repos/.
 
-   4g. RECORD STATE
+   6g. RECORD STATE
        Store with marketplace provenance fields.
        Relative plugins use composite source: "org/marketplace::plugin-name".
        External plugins use their own source identity.
@@ -903,11 +913,11 @@ symlink_destination:       /Users/you/.config/opencode/commands/review.md
 ### Unsupported Content
 
 When installing to a target that doesn't support a content type, jolene skips
-silently. With `--verbose`:
+that content and prints a warning:
 
 ```
-  Skipping 1 command for codex (not supported)
-  Skipping 1 agent for codex (not supported)
+  Warning: skipping 1 command for codex (not supported by this target)
+  Warning: skipping 1 agent for codex (not supported by this target)
 ```
 
 ---
@@ -974,7 +984,16 @@ Prefix resolution order:
 3. Neither flag → use manifest `prefix` if set, else flat
 
 The prefix is locked at install time and stored in `state.json`. `jolene update`
-preserves the stored prefix. To change prefix, uninstall and reinstall.
+preserves the stored prefix and re-validates it against current rules. To change
+prefix, uninstall and reinstall.
+
+**Prefix and manifest changes on update:** If the package author changes or
+removes the `prefix` field in `jolene.toml` between versions, it has no effect
+on existing installs — the stored prefix is always used. This is intentional:
+the user's install-time choice takes precedence over the manifest default.
+If the stored prefix fails re-validation (possible only if the state file was
+manually edited), `jolene update` aborts with an error directing the user to
+reinstall.
 
 ### Absolute Paths
 
@@ -1037,10 +1056,28 @@ Templated files are detected automatically by scanning for the opening
 delimiters `{~`, `{%~`, or `{#~`. Authors do not need to declare which files
 use templating.
 
+> **Note:** Since detection uses simple string matching, files containing these
+> delimiter sequences as literal text (e.g., in documentation explaining Jolene
+> syntax) will be incorrectly treated as templated. The custom delimiters with
+> tildes make this unlikely in practice. Use `[template] exclude` to opt out
+> when this occurs.
+
 - **Commands/Agents:** The `.md` file is scanned.
 - **Skills:** Every file in the skill directory is scanned recursively. If any
   file contains a template expression, the entire skill directory is rendered
   (templated files are rendered; non-templated files are copied as-is).
+
+**Opting out:** Authors can prevent specific content items from being treated
+as templates by listing them in `[template] exclude` in `jolene.toml`:
+
+```toml
+[template]
+exclude = ["syntax-guide"]  # never scanned; symlinked to repos/ as-is
+```
+
+Items in `exclude` are never scanned or rendered — their symlinks always point
+to `repos/` regardless of file content. Names in `exclude` must match items
+declared in `[content]`; an unknown name is an error.
 
 ### Example
 
@@ -1125,12 +1162,28 @@ Error: Conflict installing junebug/my-tools to claude-code:
 
 ### Ambiguous Package Name
 
+Native packages (same repo name from different owners):
+
 ```
 Error: Ambiguous name 'review-tools'. Multiple matches:
   author-a/review-tools
   author-b/review-tools
 
-  Use the full Author/repo format.
+  Use the full identifier:
+    owner/repo (native packages)
+    org/marketplace::plugin-name (marketplace plugins)
+```
+
+Marketplace plugins (same plugin name from different marketplaces):
+
+```
+Error: Ambiguous name 'review-plugin'. Multiple matches:
+  acme-corp/tools::review-plugin
+  other-corp/plugins::review-plugin
+
+  Use the full identifier:
+    owner/repo (native packages)
+    org/marketplace::plugin-name (marketplace plugins)
 ```
 
 ### Missing Marketplace Manifest

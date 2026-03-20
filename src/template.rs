@@ -45,8 +45,19 @@ pub fn scan_for_expressions(content: &str) -> bool {
 
 /// Scan each content item's source files and set `templated = true` if any
 /// file contains template expressions.
-pub fn scan_content_items(items: &mut [ContentItem], clone_root: &Path) -> Result<()> {
+///
+/// Items whose names appear in `exclude` are skipped — their `templated` flag
+/// stays `false` and their files are never read. This lets authors opt out of
+/// template rendering for content that contains literal template delimiters.
+pub fn scan_content_items(
+    items: &mut [ContentItem],
+    clone_root: &Path,
+    exclude: &std::collections::HashSet<&str>,
+) -> Result<()> {
     for item in items.iter_mut() {
+        if exclude.contains(item.name.as_str()) {
+            continue;
+        }
         match item.content_type {
             ContentType::Command | ContentType::Agent => {
                 let path = item.source_path(clone_root);
@@ -1022,5 +1033,55 @@ mod tests {
         assert!(
             validate_stored_overrides(&stored, &declared, "--github test/test").is_ok()
         );
+    }
+
+    // scan_content_items exclude tests
+
+    #[test]
+    fn scan_content_items_excluded_item_stays_not_templated() {
+        let dir = tempfile::tempdir().unwrap();
+        let commands_dir = dir.path().join("commands");
+        std::fs::create_dir_all(&commands_dir).unwrap();
+        // Write a file that would normally be detected as templated.
+        std::fs::write(
+            commands_dir.join("docs.md"),
+            "Use {~ jolene.resolve(\"deploy\") ~} to invoke.",
+        )
+        .unwrap();
+
+        let mut items = vec![ContentItem::new(ContentType::Command, "docs")];
+        let exclude = std::collections::HashSet::from(["docs"]);
+        scan_content_items(&mut items, dir.path(), &exclude).unwrap();
+        assert!(!items[0].templated, "excluded item should not be templated");
+    }
+
+    #[test]
+    fn scan_content_items_non_excluded_with_delimiters_is_templated() {
+        let dir = tempfile::tempdir().unwrap();
+        let commands_dir = dir.path().join("commands");
+        std::fs::create_dir_all(&commands_dir).unwrap();
+        std::fs::write(
+            commands_dir.join("docs.md"),
+            "Use {~ jolene.resolve(\"deploy\") ~} to invoke.",
+        )
+        .unwrap();
+
+        let mut items = vec![ContentItem::new(ContentType::Command, "docs")];
+        let exclude = std::collections::HashSet::new();
+        scan_content_items(&mut items, dir.path(), &exclude).unwrap();
+        assert!(items[0].templated, "non-excluded item with delimiters should be templated");
+    }
+
+    #[test]
+    fn scan_content_items_empty_exclude_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let commands_dir = dir.path().join("commands");
+        std::fs::create_dir_all(&commands_dir).unwrap();
+        std::fs::write(commands_dir.join("plain.md"), "no template expressions here").unwrap();
+
+        let mut items = vec![ContentItem::new(ContentType::Command, "plain")];
+        let exclude = std::collections::HashSet::new();
+        scan_content_items(&mut items, dir.path(), &exclude).unwrap();
+        assert!(!items[0].templated);
     }
 }
