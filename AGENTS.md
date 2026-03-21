@@ -1,6 +1,6 @@
 # Jolene
 
-Jolene is a package manager for coding agent commands, skills, and more.
+Jolene is a plugin manager for coding agent commands, skills, and more.
 
 Supported targets are opencode, codex, and claude code.
 

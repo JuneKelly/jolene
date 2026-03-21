@@ -5,13 +5,13 @@ use crate::output::Output;
 use crate::state;
 use crate::validation::load_manifest;
 
-pub fn run(package: &str, out: &Output) -> Result<()> {
+pub fn run(bundle: &str, out: &Output) -> Result<()> {
     let app_state = state::load()?;
 
-    let pkg = state::find_package(&app_state, package)?;
+    let pkg = state::find_bundle(&app_state, bundle)?;
     let pkg = match pkg {
         Some(p) => p,
-        None => bail!("Package '{}' is not installed.", package),
+        None => bail!("Bundle '{}' is not installed.", bundle),
     };
 
     let short = &pkg.commit[..pkg.commit.len().min(7)];
@@ -38,14 +38,14 @@ pub fn run(package: &str, out: &Output) -> Result<()> {
     if let Ok(clone_root) = clone_root_for(&pkg.clone_path)
         && let Ok(manifest) = load_manifest(&clone_root)
     {
-        out.print(format!("  Version:   {}", manifest.package.version));
-        out.print(format!("  Description: {}", manifest.package.description));
-        out.print(format!("  License:  {}", manifest.package.license));
+        out.print(format!("  Version:   {}", manifest.bundle.version));
+        out.print(format!("  Description: {}", manifest.bundle.description));
+        out.print(format!("  License:  {}", manifest.bundle.license));
         out.print(format!(
             "  Authors:  {}",
-            manifest.package.authors.join(", ")
+            manifest.bundle.authors.join(", ")
         ));
-        if let Some(urls) = &manifest.package.urls {
+        if let Some(urls) = &manifest.bundle.urls {
             if let Some(repo_url) = &urls.repository {
                 out.print(format!("  Repository: {}", repo_url));
             }

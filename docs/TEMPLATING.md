@@ -1,6 +1,6 @@
 # Templating Guide
 
-Jolene supports template expressions in package content files. Templates are
+Jolene supports template expressions in bundle content files. Templates are
 evaluated at install time with full knowledge of the install context — prefix,
 target, user-defined variables — so that cross-references between content items
 and target-conditional prose are always correct.
@@ -11,7 +11,7 @@ and target-conditional prose are always correct.
 
 ### The prefix problem
 
-A package ships a skill and a companion command. The skill's instructions tell
+A bundle ships a skill and a companion command. The skill's instructions tell
 users to invoke `/deploy`. When installed with `--prefix acme`, the command
 becomes `acme--deploy`, but the skill still says `/deploy`. The reference is
 silently broken.
@@ -27,7 +27,7 @@ This renders to `acme--deploy` when installed with `--prefix acme`, and
 
 ### Target-conditional content
 
-A package installed to multiple targets may need different instructions per
+A bundle installed to multiple targets may need different instructions per
 target. Without templating, authors must either write generic prose or maintain
 separate files. With templating:
 
@@ -41,14 +41,14 @@ Note: commands are not supported on Codex — only skills are available.
 
 ### User-customisable content
 
-Packages can declare variables with sensible defaults that users override at
+Bundles can declare variables with sensible defaults that users override at
 install time:
 
 ```text
 API documentation: {~ jolene.vars.doc_url ~}
 ```
 
-A team installs the same package with `--var doc_url=https://internal.corp/api`
+A team installs the same bundle with `--var doc_url=https://internal.corp/api`
 to point at their internal docs.
 
 ---
@@ -143,7 +143,7 @@ Returns the installed name of a content item, with the active prefix applied.
 Run /{~ jolene.resolve("deploy") ~} to deploy.
 ```
 
-If `deploy` is a command and the package is installed with `--prefix acme`,
+If `deploy` is a command and the bundle is installed with `--prefix acme`,
 this renders to `acme--deploy`.
 
 When a name appears in multiple content types (e.g. both a command and a skill
@@ -158,7 +158,7 @@ Valid type strings: `"command"`, `"skill"`, `"agent"`.
 
 Errors:
 
-- Name not declared in the package → error listing declared items
+- Name not declared in the bundle → error listing declared items
 - Ambiguous name without disambiguator → error suggesting the second argument
 - Invalid type string → error listing valid types
 
@@ -168,7 +168,7 @@ The active prefix as a string, or `""` if no prefix is set.
 
 ```text
 {%~ if jolene.prefix ~%}
-All commands in this package are prefixed with "{~ jolene.prefix ~}".
+All commands in this bundle are prefixed with "{~ jolene.prefix ~}".
 {%~ endif ~%}
 ```
 
@@ -184,15 +184,15 @@ Note: commands are not supported on Codex.
 {%~ endif ~%}
 ```
 
-Since templates are rendered per-target, a package installed to both
+Since templates are rendered per-target, a bundle installed to both
 `claude-code` and `opencode` produces different rendered output for each.
 
-### `jolene.package.name` / `jolene.package.version`
+### `jolene.bundle.name` / `jolene.bundle.version`
 
-The package name and version from `jolene.toml`:
+The bundle name and version from `jolene.toml`:
 
 ```text
-Provided by {~ jolene.package.name ~} v{~ jolene.package.version ~}.
+Provided by {~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}.
 ```
 
 ### `jolene.vars.*`
@@ -233,8 +233,8 @@ Values may be any TOML type except datetime:
 | Array        | `["a", "b"]`                     | `{%~ for x in jolene.vars.key ~%}` |
 | Inline table | `{ host = "localhost", port = 5432 }` | `{~ jolene.vars.key.host ~}` |
 
-The `[template.vars]` section is optional. Packages that only use
-`jolene.resolve()`, `jolene.prefix`, `jolene.target`, or `jolene.package.*`
+The `[template.vars]` section is optional. Bundles that only use
+`jolene.resolve()`, `jolene.prefix`, `jolene.target`, or `jolene.bundle.*`
 do not need it.
 
 ---
@@ -406,12 +406,12 @@ These features are not yet stable. Use at your own risk.
 {%~ endif ~%}
 ```
 
-### Package metadata in content
+### Bundle metadata in content
 
 ```text
 ---
 name: review
-description: Code review command from {~ jolene.package.name ~} v{~ jolene.package.version ~}
+description: Code review command from {~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}
 ---
 
 ...
@@ -476,7 +476,7 @@ Non-templated items are symlinked to `repos/` as before. Both paths are under
 ### Per-target rendering
 
 Templates are rendered once per target because `jolene.target` differs.
-A package installed to both `claude-code` and `opencode` may produce different
+A bundle installed to both `claude-code` and `opencode` may produce different
 output for each, enabling target-conditional content.
 
 ### Skills with mixed files
@@ -508,7 +508,7 @@ preserves the directory-level symlink model.
 - **Fuel limit.** Template execution is capped at 50,000 operations to prevent
   infinite loops or pathological templates from locking up the machine. This
   limit is generous for any reasonable content file.
-- **Marketplace not supported.** Templating applies to native packages only.
+- **Marketplace not supported.** Templating applies to native bundles only.
   Marketplace-sourced content is not scanned or rendered. Any `{~` or `{%~`
   sequences in marketplace content are left as-is.
 - **No interactive prompts.** Variable overrides must be provided via CLI flags.

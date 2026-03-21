@@ -11,10 +11,10 @@ use crate::types::state::SymlinkEntry;
 pub enum ConflictCheck {
     /// No destination exists — safe to create.
     Clear,
-    /// Destination is a jolene symlink from the same package — skip.
+    /// Destination is a jolene symlink from the same bundle — skip.
     AlreadyInstalled,
-    /// Destination is a jolene symlink from a different package.
-    PackageConflict { store_key: String },
+    /// Destination is a jolene symlink from a different bundle.
+    BundleConflict { store_key: String },
     /// Destination exists but is not a jolene-managed symlink.
     UserConflict,
 }
@@ -30,12 +30,12 @@ pub fn check_conflict(dst: &Path, current_source: &str) -> Result<ConflictCheck>
             .with_context(|| format!("Failed to read symlink {}", dst.display()))?;
 
         if is_jolene_symlink(&target)? {
-            match package_from_symlink(&target) {
+            match bundle_from_symlink(&target) {
                 Some(key) if key == current_source => {
                     return Ok(ConflictCheck::AlreadyInstalled);
                 }
                 Some(key) => {
-                    return Ok(ConflictCheck::PackageConflict { store_key: key });
+                    return Ok(ConflictCheck::BundleConflict { store_key: key });
                 }
                 None => {}
             }
@@ -53,7 +53,7 @@ pub fn is_jolene_symlink(target: &Path) -> Result<bool> {
 
 /// Extract the 64-char store-key hash from a path like
 /// `~/.jolene/repos/{hash}/...` or `~/.jolene/rendered/{hash}/...`.
-pub fn package_from_symlink(target: &Path) -> Option<String> {
+pub fn bundle_from_symlink(target: &Path) -> Option<String> {
     let root = jolene_root().ok()?;
     // Try repos/ first, then rendered/.
     for subdir in &["repos", "rendered"] {
@@ -84,8 +84,8 @@ pub struct SymlinkContext<'a> {
     pub clone_root: &'a Path,
     pub target_root: &'a Path,
     pub target_slug: &'a str,
-    pub package_source: &'a str,
-    /// Maps store-key hashes to human-readable package names for conflict messages.
+    pub bundle_source: &'a str,
+    /// Maps store-key hashes to human-readable bundle names for conflict messages.
     pub display_names: &'a HashMap<String, String>,
     pub prefix: Option<&'a str>,
     /// Root of rendered output for templated items (e.g. `rendered/{hash}/{target}/`).
@@ -111,7 +111,7 @@ pub fn plan_symlinks(ctx: &SymlinkContext<'_>) -> Result<Vec<SymlinkPlan>> {
         let dst = item.dest_path(&content_dir, ctx.prefix);
         let relative_src = item.relative_path().to_string_lossy().into_owned();
 
-        match check_conflict(&dst, ctx.package_source)? {
+        match check_conflict(&dst, ctx.bundle_source)? {
             ConflictCheck::Clear => {
                 plans.push(SymlinkPlan {
                     src,
@@ -123,7 +123,7 @@ pub fn plan_symlinks(ctx: &SymlinkContext<'_>) -> Result<Vec<SymlinkPlan>> {
             ConflictCheck::AlreadyInstalled => {
                 // Already correct — skip silently.
             }
-            ConflictCheck::PackageConflict { store_key } => {
+            ConflictCheck::BundleConflict { store_key } => {
                 let name = ctx
                     .display_names
                     .get(&store_key)

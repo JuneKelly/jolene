@@ -25,7 +25,7 @@ impl ContentType {
         }
     }
 
-    /// The directory name in both the package repo and the target config root.
+    /// The directory name in both the bundle repo and the target config root.
     pub fn dir_name(self) -> &'static str {
         match self {
             ContentType::Command => "commands",
@@ -35,7 +35,7 @@ impl ContentType {
     }
 }
 
-/// A single installable item from a package.
+/// A single installable item from a bundle.
 #[derive(Debug, Clone)]
 pub struct ContentItem {
     pub content_type: ContentType,

@@ -17,12 +17,12 @@ fn jolene_cmd(jolene_root: &Path, jolene_home: &Path) -> Command {
 }
 
 /// Create a minimal git repo with a valid `jolene.toml` and one command.
-fn create_test_package(dir: &Path, command_name: &str) {
+fn create_test_bundle(dir: &Path, command_name: &str) {
     fs::create_dir_all(dir.join("commands")).unwrap();
     fs::write(
         dir.join("jolene.toml"),
         format!(
-            r#"[package]
+            r#"[bundle]
 name = "test-pkg"
 description = "A test package"
 version = "0.1.0"
@@ -69,7 +69,7 @@ fn install_local_to_claude_code() {
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
 
-    create_test_package(pkg_dir.path(), "foo");
+    create_test_bundle(pkg_dir.path(), "foo");
 
     // Install
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -105,7 +105,7 @@ fn install_local_to_claude_code() {
     assert!(state_path.exists(), "state.json should exist");
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&state_path).unwrap()).unwrap();
-    let packages = state["packages"].as_array().unwrap();
+    let packages = state["bundles"].as_array().unwrap();
     assert_eq!(packages.len(), 1);
     assert_eq!(packages[0]["source_kind"], "local");
 }
@@ -117,7 +117,7 @@ fn list_shows_installed_package() {
     let pkg_dir = TempDir::new().unwrap();
 
     fs::create_dir_all(jolene_home.path().join(".claude")).unwrap();
-    create_test_package(pkg_dir.path(), "bar");
+    create_test_bundle(pkg_dir.path(), "bar");
 
     // Install first
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -148,7 +148,7 @@ fn uninstall_removes_symlinks() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "baz");
+    create_test_bundle(pkg_dir.path(), "baz");
 
     // Install
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -172,7 +172,7 @@ fn uninstall_removes_symlinks() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     // Uninstall
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -195,13 +195,13 @@ fn list_empty_state() {
         .args(["list"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("No packages installed"));
+        .stdout(predicate::str::contains("No bundles installed"));
 }
 
 // --- Prefix tests ---
 
 /// Create a test package with an optional manifest prefix.
-fn create_test_package_with_prefix(dir: &Path, command_name: &str, prefix: Option<&str>) {
+fn create_test_bundle_with_prefix(dir: &Path, command_name: &str, prefix: Option<&str>) {
     fs::create_dir_all(dir.join("commands")).unwrap();
 
     let prefix_line = match prefix {
@@ -212,7 +212,7 @@ fn create_test_package_with_prefix(dir: &Path, command_name: &str, prefix: Optio
     fs::write(
         dir.join("jolene.toml"),
         format!(
-            r#"[package]
+            r#"[bundle]
 name = "test-pkg"
 {prefix_line}description = "A test package"
 version = "0.1.0"
@@ -255,7 +255,7 @@ fn install_with_cli_prefix() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -290,7 +290,7 @@ fn install_with_cli_prefix() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    assert_eq!(state["packages"][0]["prefix"], "abc");
+    assert_eq!(state["bundles"][0]["prefix"], "abc");
 }
 
 #[test]
@@ -301,7 +301,7 @@ fn install_with_manifest_prefix() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package_with_prefix(pkg_dir.path(), "review", Some("jb"));
+    create_test_bundle_with_prefix(pkg_dir.path(), "review", Some("jb"));
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -329,7 +329,7 @@ fn cli_prefix_overrides_manifest_prefix() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package_with_prefix(pkg_dir.path(), "review", Some("jb"));
+    create_test_bundle_with_prefix(pkg_dir.path(), "review", Some("jb"));
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -359,7 +359,7 @@ fn no_prefix_flag_overrides_manifest() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package_with_prefix(pkg_dir.path(), "review", Some("jb"));
+    create_test_bundle_with_prefix(pkg_dir.path(), "review", Some("jb"));
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -386,7 +386,7 @@ fn no_prefix_flag_overrides_manifest() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    assert!(state["packages"][0]["prefix"].is_null());
+    assert!(state["bundles"][0]["prefix"].is_null());
 }
 
 #[test]
@@ -397,7 +397,7 @@ fn install_without_prefix_is_flat() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -422,7 +422,7 @@ fn uninstall_removes_prefixed_symlinks() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     // Install with prefix
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -447,7 +447,7 @@ fn uninstall_removes_prefixed_symlinks() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     // Uninstall
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -472,8 +472,8 @@ fn different_prefixes_avoid_conflict() {
     fs::create_dir_all(&claude_root).unwrap();
 
     // Both packages provide "review" command
-    create_test_package(pkg_a.path(), "review");
-    create_test_package(pkg_b.path(), "review");
+    create_test_bundle(pkg_a.path(), "review");
+    create_test_bundle(pkg_b.path(), "review");
 
     // Install A with prefix "abc"
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -516,7 +516,7 @@ fn list_shows_prefix() {
     let pkg_dir = TempDir::new().unwrap();
 
     fs::create_dir_all(jolene_home.path().join(".claude")).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -545,7 +545,7 @@ fn list_omits_prefix_when_not_set() {
     let pkg_dir = TempDir::new().unwrap();
 
     fs::create_dir_all(jolene_home.path().join(".claude")).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -572,7 +572,7 @@ fn prefix_and_no_prefix_conflict() {
     let pkg_dir = TempDir::new().unwrap();
 
     fs::create_dir_all(jolene_home.path().join(".claude")).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -597,7 +597,7 @@ fn invalid_prefix_rejected_by_cli() {
     let pkg_dir = TempDir::new().unwrap();
 
     fs::create_dir_all(jolene_home.path().join(".claude")).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     // Uppercase is invalid
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -640,7 +640,7 @@ fn reinstall_with_different_prefix_errors() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     // Install with prefix "abc"
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -697,7 +697,7 @@ fn reinstall_with_same_prefix_succeeds() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     // Install with prefix "abc"
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -736,7 +736,7 @@ fn update_preserves_prefix() {
 
     let claude_root = jolene_home.path().join(".claude");
     fs::create_dir_all(&claude_root).unwrap();
-    create_test_package(pkg_dir.path(), "review");
+    create_test_bundle(pkg_dir.path(), "review");
 
     // Install with prefix
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -782,7 +782,7 @@ fn update_preserves_prefix() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args(["update", &source])
@@ -806,7 +806,7 @@ fn update_preserves_prefix() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    assert_eq!(state["packages"][0]["prefix"], "abc");
+    assert_eq!(state["bundles"][0]["prefix"], "abc");
 }
 
 // --- Template tests ---
@@ -833,7 +833,7 @@ fn create_templated_package(dir: &Path) {
 
     fs::write(
         dir.join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "tmpl-pkg"
 description = "A templated test package"
 version = "1.0.0"
@@ -876,7 +876,7 @@ Advanced: enabled
 
 Target: {~ jolene.target ~}
 Prefix: {~ jolene.prefix ~}
-Package: {~ jolene.package.name ~} v{~ jolene.package.version ~}
+Bundle: {~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}
 Deploy command: {~ jolene.resolve("deploy") ~}
 "#,
     )
@@ -951,7 +951,7 @@ fn install_templated_package_renders_expressions() {
         "rendered skill should contain target slug"
     );
     assert!(
-        skill_content.contains("Package: tmpl-pkg v1.0.0"),
+        skill_content.contains("Bundle: tmpl-pkg v1.0.0"),
         "rendered skill should contain package info"
     );
     assert!(
@@ -1050,7 +1050,7 @@ fn install_templated_with_var_overrides() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let overrides = &state["packages"][0]["var_overrides"];
+    let overrides = &state["bundles"][0]["var_overrides"];
     assert!(
         !overrides.is_null(),
         "var_overrides should be stored in state"
@@ -1205,7 +1205,7 @@ fn install_templated_resolve_unknown_item_errors() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "bad-resolve"
 description = "Test"
 version = "1.0.0"
@@ -1252,7 +1252,7 @@ fn install_templated_ambiguous_resolve_errors() {
     fs::create_dir_all(pkg_dir.path().join("skills/review")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "ambiguous"
 description = "Test"
 version = "1.0.0"
@@ -1308,7 +1308,7 @@ fn install_templated_ambiguous_resolve_with_disambiguator_succeeds() {
     fs::create_dir_all(pkg_dir.path().join("skills/review")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "disambiguous"
 description = "Test"
 version = "1.0.0"
@@ -1376,7 +1376,7 @@ fn install_non_templated_files_symlink_to_repos() {
     fs::create_dir_all(&claude_root).unwrap();
 
     // Create a package with NO template expressions — should symlink to repos/.
-    create_test_package(pkg_dir.path(), "plain");
+    create_test_bundle(pkg_dir.path(), "plain");
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args([
@@ -1419,7 +1419,7 @@ fn install_templated_per_target_rendering() {
     fs::create_dir_all(pkg_dir.path().join("skills/info")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "multi-target"
 description = "Test"
 version = "1.0.0"
@@ -1536,7 +1536,7 @@ Updated deploy. Docs: {~ jolene.vars.doc_url ~}
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args(["update", &source])
@@ -1583,7 +1583,7 @@ fn uninstall_purge_removes_rendered() {
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     // Uninstall with --purge.
     jolene_cmd(jolene_root.path(), jolene_home.path())
@@ -1620,7 +1620,7 @@ fn doctor_detects_orphaned_rendered() {
     // Write an empty state.json so doctor has something to work with.
     fs::write(
         jolene_root.path().join("state.json"),
-        r#"{"packages":[]}"#,
+        r#"{"bundles":[]}"#,
     )
     .unwrap();
 
@@ -1645,7 +1645,7 @@ fn install_templated_no_vars_section_works() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "no-vars"
 description = "Test"
 version = "1.0.0"
@@ -1695,7 +1695,7 @@ fn install_templated_fuel_limit_errors() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "fuel-hog"
 description = "Test"
 version = "1.0.0"
@@ -1749,7 +1749,7 @@ fn install_templated_skill_with_mixed_files() {
     fs::create_dir_all(pkg_dir.path().join("skills/mixed/nested")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "mixed-skill"
 description = "Test"
 version = "1.0.0"
@@ -1835,7 +1835,7 @@ fn update_switches_symlink_when_templated_status_changes() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "flip-pkg"
 description = "Test"
 version = "1.0.0"
@@ -1893,7 +1893,7 @@ commands = ["flip"]
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args(["update", &source])
@@ -1932,7 +1932,7 @@ fn update_switches_symlink_when_item_becomes_templated() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "gain-tmpl"
 description = "Test"
 version = "1.0.0"
@@ -1984,7 +1984,7 @@ commands = ["cmd"]
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args(["update", &source])
@@ -2019,7 +2019,7 @@ fn install_templated_vars_json_partial_deep_merge() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "merge-pkg"
 description = "Test"
 version = "1.0.0"
@@ -2092,7 +2092,7 @@ fn install_templated_skill_with_binary_file() {
     fs::create_dir_all(pkg_dir.path().join("skills/with-bin")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "bin-skill"
 description = "Test"
 version = "1.0.0"
@@ -2175,7 +2175,7 @@ fn update_aborts_when_stored_override_var_removed() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "evolve-pkg"
 description = "Test"
 version = "1.0.0"
@@ -2220,7 +2220,7 @@ max_retries = 3
     // v2: author removes doc_url from [template.vars].
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "evolve-pkg"
 description = "Test"
 version = "2.0.0"
@@ -2248,7 +2248,7 @@ max_retries = 3
     let state: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(jolene_root.path().join("state.json")).unwrap())
             .unwrap();
-    let source = state["packages"][0]["source"].as_str().unwrap().to_string();
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
 
     jolene_cmd(jolene_root.path(), jolene_home.path())
         .args(["update", &source])
@@ -2263,7 +2263,7 @@ fn create_package_with_excluded_item(dir: &Path) {
     fs::create_dir_all(dir.join("commands")).unwrap();
     fs::write(
         dir.join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "syntax-docs"
 description = "Package with literal template delimiter text"
 version = "1.0.0"
@@ -2341,7 +2341,7 @@ fn exclude_unknown_name_rejects_install() {
     fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
     fs::write(
         pkg_dir.path().join("jolene.toml"),
-        r#"[package]
+        r#"[bundle]
 name = "test"
 description = "test"
 version = "1.0.0"
@@ -2373,4 +2373,54 @@ exclude = ["nonexistent"]
         .failure()
         .stderr(predicate::str::contains("[template.exclude]"))
         .stderr(predicate::str::contains("nonexistent"));
+}
+
+#[test]
+fn state_json_packages_key_migrated_to_bundles_on_mutating_command() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_test_bundle(pkg_dir.path(), "review");
+
+    // Install so state.json is created with the new "bundles" key.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    let state_path = jolene_root.path().join("state.json");
+
+    // Rewrite state.json replacing the top-level "bundles" key with the old "packages" key.
+    let content = fs::read_to_string(&state_path).unwrap();
+    let mut raw: serde_json::Value = serde_json::from_str(&content).unwrap();
+    let bundles = raw.as_object_mut().unwrap().remove("bundles").unwrap();
+    raw.as_object_mut().unwrap().insert("packages".to_string(), bundles);
+    fs::write(&state_path, serde_json::to_string(&raw).unwrap()).unwrap();
+
+    // Run a mutating command (update). It should migrate and report it.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["update"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("Migrating state.json"));
+
+    // After migration, state.json should use "bundles", not "packages".
+    let after = fs::read_to_string(&state_path).unwrap();
+    assert!(
+        after.contains("\"bundles\""),
+        "state.json should use \"bundles\" after migration"
+    );
+    assert!(
+        !after.contains("\"packages\""),
+        "state.json should not contain old \"packages\" key after migration"
+    );
 }

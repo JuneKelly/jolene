@@ -16,26 +16,26 @@ use crate::types::content::ContentType;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest, validate_prefix};
 
-pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
+pub fn run(bundle: Option<&str>, out: &Output) -> Result<()> {
     let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
 
-    let sources: Vec<String> = match package {
+    let sources: Vec<String> = match bundle {
         Some(name) => {
-            let pkg = state::find_package(&app_state, name)?;
+            let pkg = state::find_bundle(&app_state, name)?;
             match pkg {
                 Some(p) => vec![p.source.clone()],
-                None => bail!("Package '{}' is not installed.", name),
+                None => bail!("Bundle '{}' is not installed.", name),
             }
         }
         None => app_state
-            .packages
+            .bundles
             .iter()
             .map(|p| p.source.clone())
             .collect(),
     };
 
     if sources.is_empty() {
-        out.print("No packages installed.");
+        out.print("No bundles installed.");
         return Ok(());
     }
 
@@ -48,8 +48,8 @@ pub fn run(package: Option<&str>, out: &Output) -> Result<()> {
 }
 
 fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
-    let pkg = state::find_package(app_state, source)?
-        .ok_or_else(|| anyhow::anyhow!("Package '{}' not found in state.", source))?;
+    let pkg = state::find_bundle(app_state, source)?
+        .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found in state.", source))?;
 
     let store_key = pkg.store_key().to_owned();
     let installations: Vec<_> = pkg.installations.clone();
@@ -63,7 +63,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     if let Some(ref p) = prefix {
         validate_prefix(p).with_context(|| {
             format!(
-                "Stored prefix '{}' for package '{}' is no longer valid.\n  Uninstall and reinstall to reset the prefix:\n    jolene uninstall {}",
+                "Stored prefix '{}' for bundle '{}' is no longer valid.\n  Uninstall and reinstall to reset the prefix:\n    jolene uninstall {}",
                 p, source, source
             )
         })?;
@@ -75,7 +75,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     let clone_root = clone_root_for(&pkg.clone_path)?;
 
     let display_names: HashMap<String, String> = app_state
-        .packages
+        .bundles
         .iter()
         .map(|p| (p.store_key().to_string(), p.source.clone()))
         .collect();
@@ -110,7 +110,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
     content_check::check_and_warn_skills(&items, &content_dir, out, "  ");
     content_check::check_and_warn_agents(&items, &content_dir, out, "  ");
 
-    // 2b. Re-scan and re-render (native packages only)
+    // 2b. Re-scan and re-render (native bundles only)
     if let Some(ref manifest) = manifest {
         let exclude: std::collections::HashSet<&str> =
             manifest.template_exclude().iter().map(String::as_str).collect();
@@ -260,7 +260,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
             clone_root: &content_dir,
             target_root: &target_root,
             target_slug: inst.target.as_str(),
-            package_source: &store_key,
+            bundle_source: &store_key,
             display_names: &display_names,
             prefix: prefix.as_deref(),
             rendered_item_root: rendered_root.as_deref(),
@@ -291,7 +291,7 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 5. Execute recreations and removals, then update state per target.
     //    New additions are on disk; it's now safe to touch existing symlinks.
-    let pkg_mut = state::find_package_mut(app_state, source)?.unwrap();
+    let pkg_mut = state::find_bundle_mut(app_state, source)?.unwrap();
     let mut offset = 0;
     for stage in &staged {
         let new_entries = all_entries[offset..offset + stage.plan_count].to_vec();

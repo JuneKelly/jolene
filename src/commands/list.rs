@@ -8,23 +8,23 @@ use crate::validation::load_manifest;
 pub fn run(target: Option<&str>, out: &Output) -> Result<()> {
     let app_state = state::load()?;
 
-    let packages: Vec<_> = match target {
+    let bundles: Vec<_> = match target {
         Some(slug) => app_state
-            .packages
+            .bundles
             .iter()
             .filter(|p| p.installations.iter().any(|i| i.target == slug))
             .collect(),
-        None => app_state.packages.iter().collect(),
+        None => app_state.bundles.iter().collect(),
     };
 
-    if packages.is_empty() {
-        out.print("No packages installed.");
+    if bundles.is_empty() {
+        out.print("No bundles installed.");
         return Ok(());
     }
 
-    out.print("Installed packages:\n");
+    out.print("Installed bundles:\n");
 
-    for pkg in packages {
+    for pkg in bundles {
         let target_names: Vec<_> = pkg
             .installations
             .iter()

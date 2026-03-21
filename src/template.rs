@@ -265,8 +265,8 @@ fn declared_var_list(vars: &BTreeMap<String, VarValue>) -> String {
 struct JoleneObject {
     prefix: String,
     target: String,
-    package_name: String,
-    package_version: String,
+    bundle_name: String,
+    bundle_version: String,
     vars: Value,
     items: Vec<ContentItem>,
 }
@@ -301,9 +301,9 @@ impl Object for JoleneObject {
         match key.as_str()? {
             "prefix" => Some(Value::from(self.prefix.as_str())),
             "target" => Some(Value::from(self.target.as_str())),
-            "package" => Some(Value::from_iter([
-                ("name", Value::from(self.package_name.as_str())),
-                ("version", Value::from(self.package_version.as_str())),
+            "bundle" => Some(Value::from_iter([
+                ("name", Value::from(self.bundle_name.as_str())),
+                ("version", Value::from(self.bundle_version.as_str())),
             ])),
             "vars" => Some(self.vars.clone()),
             _ => None,
@@ -311,7 +311,7 @@ impl Object for JoleneObject {
     }
 
     fn enumerate(self: &Arc<Self>) -> Enumerator {
-        Enumerator::Str(&["prefix", "target", "package", "vars"])
+        Enumerator::Str(&["prefix", "target", "bundle", "vars"])
     }
 
     fn call_method(
@@ -374,7 +374,7 @@ impl Object for JoleneObject {
                         Err(minijinja::Error::new(
                             minijinja::ErrorKind::InvalidOperation,
                             format!(
-                                "jolene.resolve(\"{}\") references content item '{}', which is not declared in this package.\n  Declared items: {}",
+                                "jolene.resolve(\"{}\") references content item '{}', which is not declared in this bundle.\n  Declared items: {}",
                                 item_name, item_name, declared.join(", ")
                             ),
                         ))
@@ -439,8 +439,8 @@ pub fn render_content_items(
     let jolene_obj = JoleneObject {
         prefix: prefix.unwrap_or("").to_string(),
         target: target_slug.to_string(),
-        package_name: manifest.package.name.clone(),
-        package_version: manifest.package.version.clone(),
+        bundle_name: manifest.bundle.name.clone(),
+        bundle_version: manifest.bundle.version.clone(),
         vars: vars_value,
         items: items.to_vec(),
     };
@@ -615,7 +615,7 @@ pub fn validate_stored_overrides(
             None => {
                 let available = declared_var_list(declared);
                 bail!(
-                    "Stored variable override '{}' is no longer declared in [template.vars].\n  The package update removed this variable. Uninstall and reinstall with corrected overrides:\n    jolene uninstall {} && jolene install {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
+                    "Stored variable override '{}' is no longer declared in [template.vars].\n  The bundle update removed this variable. Uninstall and reinstall with corrected overrides:\n    jolene uninstall {} && jolene install {} [--var key=value] [--vars-json ...]\n  Declared vars: {}",
                     key,
                     source_kind_flag,
                     source_kind_flag,
@@ -847,8 +847,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "acme".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test-pkg".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test-pkg".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: build_vars_value(&vars),
             items,
         };
@@ -868,8 +868,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "acme".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items,
         };
@@ -888,8 +888,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items,
         };
@@ -908,8 +908,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items,
         };
@@ -931,8 +931,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items,
         };
@@ -954,8 +954,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "claude-code".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items,
         };
@@ -970,12 +970,12 @@ mod tests {
     }
 
     #[test]
-    fn render_package_info() {
+    fn render_bundle_info() {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "claude-code".to_string(),
-            package_name: "my-pkg".to_string(),
-            package_version: "2.1.0".to_string(),
+            bundle_name: "my-pkg".to_string(),
+            bundle_version: "2.1.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items: vec![],
         };
@@ -984,7 +984,7 @@ mod tests {
         env.add_global("jolene", Value::from_object(obj));
 
         let result = env
-            .render_str("{~ jolene.package.name ~} v{~ jolene.package.version ~}", ())
+            .render_str("{~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}", ())
             .unwrap();
         assert_eq!(result, "my-pkg v2.1.0");
     }
@@ -994,8 +994,8 @@ mod tests {
         let obj = JoleneObject {
             prefix: "".to_string(),
             target: "codex".to_string(),
-            package_name: "test".to_string(),
-            package_version: "1.0.0".to_string(),
+            bundle_name: "test".to_string(),
+            bundle_version: "1.0.0".to_string(),
             vars: Value::from_iter(Vec::<(String, Value)>::new()),
             items: vec![],
         };

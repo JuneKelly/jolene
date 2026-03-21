@@ -43,7 +43,7 @@ pub fn rendered_root() -> Result<PathBuf> {
     Ok(jolene_root()?.join("rendered"))
 }
 
-/// Path to rendered content for a specific package+target combination.
+/// Path to rendered content for a specific bundle+target combination.
 pub fn rendered_path_for(store_key: &str, target_slug: &str) -> Result<PathBuf> {
     Ok(rendered_root()?.join(store_key).join(target_slug))
 }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use sha2::{Digest, Sha256};
 
-/// The source from which a package is installed.
+/// The source from which a bundle is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
     /// A GitHub repository, addressed as `owner/repo`.
