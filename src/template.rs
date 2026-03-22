@@ -554,6 +554,12 @@ fn render_template(
     source: &str,
     display_name: &str,
 ) -> Result<String> {
+    if source.contains("jolene.package") {
+        eprintln!(
+            "Warning: {} references `jolene.package`, which was renamed to `jolene.bundle` — update `jolene.package.name` → `jolene.bundle.name`, `jolene.package.version` → `jolene.bundle.version`",
+            display_name
+        );
+    }
     env.render_str(source, ())
         .map_err(|e| format_template_error(e, display_name))
 }
@@ -835,6 +841,14 @@ mod tests {
         let env = create_env().unwrap();
         let result = render_template(&env, "plain text no expressions", "test.md");
         assert_eq!(result.unwrap(), "plain text no expressions");
+    }
+
+    #[test]
+    fn render_warns_on_jolene_package_reference() {
+        // A file containing "jolene.package" (even as prose) should warn but not error.
+        let env = create_env().unwrap();
+        let result = render_template(&env, "They used to use jolene.package here.", "test.md");
+        assert!(result.is_ok());
     }
 
     #[test]
