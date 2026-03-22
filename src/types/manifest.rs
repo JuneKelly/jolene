@@ -8,6 +8,7 @@ use super::var_value::VarValue;
 /// Top-level jolene.toml structure.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
+    #[serde(alias = "package")]
     pub bundle: Bundle,
     pub content: ContentDecl,
     #[serde(default)]

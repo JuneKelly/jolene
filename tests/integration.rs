@@ -59,6 +59,95 @@ commands = ["{command_name}"]
     run(&["commit", "-m", "init"]);
 }
 
+/// Create a minimal git repo with a `jolene.toml` using the deprecated `[package]` table.
+fn create_legacy_package_bundle(dir: &Path, command_name: &str) {
+    fs::create_dir_all(dir.join("commands")).unwrap();
+    fs::write(
+        dir.join("jolene.toml"),
+        format!(
+            r#"[package]
+name = "test-pkg"
+description = "A test package"
+version = "0.1.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["{command_name}"]
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        dir.join("commands").join(format!("{command_name}.md")),
+        format!("# {command_name}\nA test command.\n"),
+    )
+    .unwrap();
+
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .expect("git command failed")
+    };
+
+    run(&["init", "-b", "main"]);
+    run(&["add", "."]);
+    run(&["commit", "-m", "init"]);
+}
+
+#[test]
+fn install_legacy_package_table_succeeds() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_legacy_package_bundle(pkg_dir.path(), "review");
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    assert!(claude_root.join("commands/review.md").is_symlink());
+}
+
+#[test]
+fn install_legacy_package_table_prints_deprecation_warning() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    create_legacy_package_bundle(pkg_dir.path(), "review");
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("deprecated [package] table"));
+}
+
 #[test]
 fn install_local_to_claude_code() {
     let jolene_root = TempDir::new().unwrap();

@@ -11,29 +11,7 @@ Jolene is in alpha — breaking changes can occur in any release.
 
 ### Breaking changes for bundle authors
 
-#### `jolene.toml`: `[package]` table renamed to `[bundle]`
-
-The manifest table that describes your bundle has been renamed:
-
-```toml
-# Before
-[package]
-name = "my-tools"
-...
-
-# After
-[bundle]
-name = "my-tools"
-...
-```
-
-This affects all `jolene.toml` manifests. Bundles using the old `[package]`
-header will fail to install with a parse error.
-
-Similarly, the optional URL and prefix fields move from `[package.urls]` and
-`package.prefix` to `[bundle.urls]` and `bundle.prefix`.
-
-#### Template context: `jolene.package.*` renamed to `jolene.bundle.*`
+#### Template context: `jolene.package.*` renamed to `jolene.bundle.*` (breaking)
 
 Content files using the bundle name or version via the template context must
 be updated:
@@ -46,9 +24,38 @@ Provided by {~ jolene.package.name ~} v{~ jolene.package.version ~}.
 Provided by {~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}.
 ```
 
-Referencing `jolene.package` in a template will now produce a hard error at
+Referencing `jolene.package` in a template will produce a hard error at
 install time. All other template context (`jolene.resolve()`, `jolene.prefix`,
 `jolene.target`, `jolene.vars.*`) is unchanged.
+
+### Deprecated
+
+#### `jolene.toml`: `[package]` table renamed to `[bundle]`
+
+The manifest table that describes your bundle has been renamed. The old
+`[package]` header is still accepted but will print a deprecation warning:
+
+```
+Warning: jolene.toml uses deprecated [package] table — rename it to [bundle]
+```
+
+Update your manifest:
+
+```toml
+# Before (deprecated)
+[package]
+name = "my-tools"
+...
+
+# After
+[bundle]
+name = "my-tools"
+...
+```
+
+Similarly, `[package.urls]` becomes `[bundle.urls]` and `package.prefix`
+becomes `bundle.prefix`.
+
 
 ### Changed
 

@@ -100,6 +100,15 @@ pub fn load_manifest(clone_root: &Path) -> Result<Manifest> {
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
 
+    // Warn if the manifest uses the old [package] table name.
+    let raw: toml::Value = toml::from_str(&text)
+        .with_context(|| format!("Invalid jolene.toml in {}", clone_root.display()))?;
+    if raw.get("package").is_some() && raw.get("bundle").is_none() {
+        eprintln!(
+            "Warning: jolene.toml uses deprecated [package] table — rename it to [bundle]"
+        );
+    }
+
     let manifest: Manifest = toml::from_str(&text)
         .with_context(|| format!("Invalid jolene.toml in {}", clone_root.display()))?;
 
