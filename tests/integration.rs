@@ -1912,6 +1912,56 @@ skills = ["mixed"]
 }
 
 #[test]
+fn install_warns_on_deprecated_jolene_package_in_template() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let pkg_dir = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+    fs::create_dir_all(pkg_dir.path().join("commands")).unwrap();
+
+    fs::write(
+        pkg_dir.path().join("jolene.toml"),
+        r#"[bundle]
+name = "old-pkg"
+description = "Test"
+version = "1.0.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["cmd"]
+"#,
+    )
+    .unwrap();
+
+    // Command using the old jolene.package context (renamed to jolene.bundle).
+    fs::write(
+        pkg_dir.path().join("commands/cmd.md"),
+        "Provided by {~ jolene.package.name ~}.\n",
+    )
+    .unwrap();
+
+    git_in(pkg_dir.path(), &["init", "-b", "main"]);
+    git_in(pkg_dir.path(), &["add", "."]);
+    git_in(pkg_dir.path(), &["commit", "-m", "init"]);
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            pkg_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .stderr(predicate::str::contains("jolene.package").and(
+            predicate::str::contains("jolene.bundle"),
+        ));
+}
+
+#[test]
 fn update_switches_symlink_when_templated_status_changes() {
     let jolene_root = TempDir::new().unwrap();
     let jolene_home = TempDir::new().unwrap();
