@@ -16,7 +16,7 @@ use crate::symlink::{SymlinkContext, SymlinkPlan, execute_symlinks, plan_symlink
 use crate::template;
 use crate::types::content::{ContentItem, ContentType};
 use crate::types::source::Source;
-use crate::types::state::{Installation, PackageState, SourceKind};
+use crate::types::state::{BundleState, Installation, SourceKind};
 use crate::types::target::Target;
 use crate::types::var_value::VarValue;
 use crate::validation::{collect_content_items, load_manifest, resolve_prefix, validate_manifest};
@@ -103,7 +103,7 @@ pub fn run(
     let prefix = resolve_prefix(
         cli_prefix,
         cli_no_prefix,
-        manifest.package.prefix.as_deref(),
+        manifest.bundle.prefix.as_deref(),
     )?;
 
     out.print(format!("  Found: {}", manifest.content.summary()));
@@ -140,7 +140,7 @@ pub fn run(
     check_prefix_mismatch(&app_state, &source.display(), prefix.as_deref())?;
 
     let display_names: HashMap<String, String> = app_state
-        .packages
+        .bundles
         .iter()
         .map(|p| (p.store_key().to_string(), p.source.clone()))
         .collect();
@@ -325,7 +325,7 @@ fn run_marketplace(
 
         // Rebuild display_names each iteration so cross-plugin conflicts are caught.
         let display_names: HashMap<String, String> = app_state
-            .packages
+            .bundles
             .iter()
             .map(|p| (p.store_key().to_string(), p.source.clone()))
             .collect();
@@ -390,7 +390,7 @@ struct ResolvedPlugin {
     /// For relative plugins, the subdirectory within the marketplace clone.
     /// None for external plugins (they have their own clone).
     plugin_path: Option<String>,
-    /// Display name used as the `source` field in PackageState.
+    /// Display name used as the `source` field in BundleState.
     /// For relative plugins: "org/marketplace::plugin-name".
     /// For external plugins: the plugin's own source display.
     display_name: String,
@@ -423,7 +423,7 @@ fn resolve_plugin_source(
                     )
                 })?;
             // Relative plugins live inside the marketplace clone.
-            // Use a composite display name so each gets a distinct PackageState entry.
+            // Use a composite display name so each gets a distinct BundleState entry.
             let display_name = format!("{}::{}", mp_source.display(), plugin_name);
             Ok(ResolvedPlugin {
                 dir: plugin_dir,
@@ -564,7 +564,7 @@ fn plan_all_targets(ctx: &PlanAllTargetsContext<'_>) -> Result<(Vec<TargetStage>
             clone_root: ctx.clone_root,
             target_root: &target_root,
             target_slug: target.slug(),
-            package_source: ctx.store_key,
+            bundle_source: ctx.store_key,
             display_names: ctx.display_names,
             prefix: ctx.prefix,
             rendered_item_root: rendered_root.as_deref(),
@@ -629,7 +629,7 @@ struct StateRecord {
     marketplace: Option<String>,
     plugin_name: Option<String>,
     plugin_path: Option<String>,
-    /// Override the display name used as the `source` field in PackageState.
+    /// Override the display name used as the `source` field in BundleState.
     /// When None, uses `source.display()`.
     display_override: Option<String>,
     prefix: Option<String>,
@@ -651,7 +651,7 @@ fn record_state(
 
     // Look up by the display name we'll store (important for relative plugins
     // which use "org/marketplace::plugin-name" instead of just "org/marketplace").
-    match state::find_package_mut(app_state, &display_name)? {
+    match state::find_bundle_mut(app_state, &display_name)? {
         Some(existing) => {
             existing.branch = record.branch;
             existing.commit = record.commit;
@@ -680,7 +680,7 @@ fn record_state(
             }
         }
         None => {
-            app_state.packages.push(PackageState {
+            app_state.bundles.push(BundleState {
                 source_kind: match source {
                     Source::GitHub { .. } => SourceKind::GitHub,
                     Source::Local(_) => SourceKind::Local,
@@ -706,13 +706,13 @@ fn record_state(
     Ok(())
 }
 
-/// Error if the package is already installed with a different prefix.
+/// Error if the bundle is already installed with a different prefix.
 fn check_prefix_mismatch(
     app_state: &crate::types::state::State,
     display_name: &str,
     new_prefix: Option<&str>,
 ) -> Result<()> {
-    if let Some(existing) = state::find_package(app_state, display_name)? {
+    if let Some(existing) = state::find_bundle(app_state, display_name)? {
         let old = existing.prefix.as_deref();
         if old != new_prefix {
             let fmt = |p: Option<&str>| match p {
@@ -720,7 +720,7 @@ fn check_prefix_mismatch(
                 None => "none".to_string(),
             };
             bail!(
-                "Package '{}' is already installed with prefix {}.\n  To change prefix, uninstall first:\n    jolene uninstall {}",
+                "Bundle '{}' is already installed with prefix {}.\n  To change prefix, uninstall first:\n    jolene uninstall {}",
                 display_name,
                 fmt(old),
                 display_name,

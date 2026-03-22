@@ -12,8 +12,8 @@ use crate::types::source::Source;
 use crate::validation::{collect_content_items, load_manifest};
 
 pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
-    if let Some(ref pkg_name) = args.package {
-        return show_installed_package(pkg_name, out);
+    if let Some(ref pkg_name) = args.bundle {
+        return show_installed_bundle(pkg_name, out);
     }
 
     let source = if let Some(ref s) = args.github {
@@ -36,7 +36,7 @@ pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
     };
 
     let Some(source) = source else {
-        bail!("Specify a source (--github, --local, --url) or an installed package name.");
+        bail!("Specify a source (--github, --local, --url) or an installed bundle name.");
     };
 
     // Clone or pull
@@ -52,7 +52,7 @@ pub fn run(args: &ContentsArgs, out: &Output) -> Result<()> {
     if args.marketplace {
         show_marketplace(&source, &clone_root, out)
     } else {
-        show_native_package(&source, &clone_root, out)
+        show_native_bundle(&source, &clone_root, out)
     }
 }
 
@@ -119,7 +119,7 @@ fn show_marketplace(source: &Source, clone_root: &std::path::Path, out: &Output)
     Ok(())
 }
 
-fn show_native_package(source: &Source, clone_root: &std::path::Path, out: &Output) -> Result<()> {
+fn show_native_bundle(source: &Source, clone_root: &std::path::Path, out: &Output) -> Result<()> {
     let manifest =
         load_manifest(clone_root).map_err(|e| anyhow::anyhow!("{} {}", source.display(), e))?;
 
@@ -127,19 +127,19 @@ fn show_native_package(source: &Source, clone_root: &std::path::Path, out: &Outp
 
     out.print(format!(
         "{} — {}",
-        manifest.package.name, manifest.package.description
+        manifest.bundle.name, manifest.bundle.description
     ));
-    out.print(format!("Version: {}", manifest.package.version));
+    out.print(format!("Version: {}", manifest.bundle.version));
 
     print_content_list(&items, out);
 
     Ok(())
 }
 
-fn show_installed_package(pkg_name: &str, out: &Output) -> Result<()> {
+fn show_installed_bundle(pkg_name: &str, out: &Output) -> Result<()> {
     let app_state = state::load()?;
-    let pkg = state::find_package(&app_state, pkg_name)?
-        .ok_or_else(|| anyhow::anyhow!("Package '{}' is not installed.", pkg_name))?;
+    let pkg = state::find_bundle(&app_state, pkg_name)?
+        .ok_or_else(|| anyhow::anyhow!("Bundle '{}' is not installed.", pkg_name))?;
 
     out.print(pkg.source.to_string());
     if let Some(ref mp) = pkg.marketplace {

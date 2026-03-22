@@ -6,13 +6,13 @@ use clap::{ArgGroup, Args, Parser, Subcommand};
 #[command(
     name = "jolene",
     version,
-    about = "A package manager for coding agent commands, skills, and agents.",
+    about = "A plugin manager for coding agent commands, skills, and agents.",
     after_help = "\
 Quick start:
 
   Install from GitHub:  jolene install --github owner/repo
   Install from URL:     jolene install --url https://example.com/repo.git
-  Install from path:    jolene install --local /path/to/package
+  Install from path:    jolene install --local /path/to/bundle
   List installed:       jolene list
   Update all:           jolene update
   Uninstall:            jolene uninstall owner/repo
@@ -25,7 +25,7 @@ Marketplace (Claude Code plugin repos):
 Prefixes:
 
   Prefixes namespace installed content to avoid conflicts between
-  packages. A prefix is joined to the content name with '--':
+  bundles. A prefix is joined to the content name with '--':
 
     --prefix jb           jb--review.md, jb--refactor.md
     --no-prefix           strip any manifest-defined prefix
@@ -33,10 +33,10 @@ Prefixes:
 
   Prefix rules: lowercase letters, digits, and hyphens only; no
   leading/trailing hyphens; no consecutive hyphens; max 64 chars.
-  A manifest can set a default prefix in [package]: prefix = \"jb\".
+  A manifest can set a default prefix in [bundle]: prefix = \"jb\".
   The --prefix flag overrides the manifest; --no-prefix suppresses it.
 
-A package is a git repo with a jolene.toml manifest containing
+A bundle is a git repo with a jolene.toml manifest containing
 commands/, skills/, and/or agents/ that get symlinked into your
 coding tool's config directory. Marketplace repos use
 .claude-plugin/marketplace.json instead.
@@ -65,13 +65,13 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Install a package
+    /// Install a bundle
     Install(InstallArgs),
 
-    /// Uninstall a package
+    /// Uninstall a bundle
     Uninstall {
-        /// Package identifier: owner/repo (GitHub), absolute path (local), or URL
-        package: String,
+        /// Bundle identifier: owner/repo (GitHub), absolute path (local), or URL
+        bundle: String,
 
         /// Remove from specific targets only (repeatable). Defaults to all.
         #[arg(long = "from", value_name = "TARGET")]
@@ -82,26 +82,26 @@ pub enum Command {
         purge: bool,
     },
 
-    /// List installed packages
+    /// List installed bundles
     List {
         /// Filter by target
         #[arg(long, value_name = "TARGET")]
         target: Option<String>,
     },
 
-    /// Update one or all packages
+    /// Update one or all bundles
     Update {
-        /// Package to update. Omit to update all.
-        package: Option<String>,
+        /// Bundle to update. Omit to update all.
+        bundle: Option<String>,
     },
 
-    /// Show detailed info about an installed package
+    /// Show detailed info about an installed bundle
     Info {
-        /// Package identifier: owner/repo (GitHub), absolute path (local), or URL
-        package: String,
+        /// Bundle identifier: owner/repo (GitHub), absolute path (local), or URL
+        bundle: String,
     },
 
-    /// Browse contents of a marketplace or installed package
+    /// Browse contents of a marketplace or installed bundle
     Contents(ContentsArgs),
 
     /// Verify health of all installations
@@ -110,7 +110,7 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 #[command(
-    about = "Install a package",
+    about = "Install a bundle",
     group(
         ArgGroup::new("source")
             .required(true)
@@ -161,10 +161,10 @@ pub struct InstallArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    about = "Browse contents of a marketplace or installed package",
+    about = "Browse contents of a marketplace or installed bundle",
     group(
         ArgGroup::new("contents_source")
-            .args(["github", "local", "url", "package"])
+            .args(["github", "local", "url", "bundle"])
     )
 )]
 pub struct ContentsArgs {
@@ -180,9 +180,9 @@ pub struct ContentsArgs {
     #[arg(long, value_name = "URL")]
     pub url: Option<String>,
 
-    /// Name of an installed package
-    #[arg(value_name = "PACKAGE")]
-    pub package: Option<String>,
+    /// Name of an installed bundle
+    #[arg(value_name = "BUNDLE")]
+    pub bundle: Option<String>,
 
     /// Treat the source as a Claude Code marketplace repository
     #[arg(long)]

@@ -93,12 +93,21 @@ pub fn load_manifest(clone_root: &Path) -> Result<Manifest> {
 
     if !path.exists() {
         bail!(
-            "is missing jolene.toml\n  Every jolene package must include a jolene.toml manifest.\n  See https://github.com/jolene-pm/jolene#package-format"
+            "is missing jolene.toml\n  Every jolene bundle must include a jolene.toml manifest.\n  See https://github.com/jolene-pm/jolene#bundle-format"
         );
     }
 
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read {}", path.display()))?;
+
+    // Warn if the manifest uses the old [package] table name.
+    let raw: toml::Value = toml::from_str(&text)
+        .with_context(|| format!("Invalid jolene.toml in {}", clone_root.display()))?;
+    if raw.get("package").is_some() && raw.get("bundle").is_none() {
+        eprintln!(
+            "Warning: jolene.toml uses deprecated [package] table — rename it to [bundle]"
+        );
+    }
 
     let manifest: Manifest = toml::from_str(&text)
         .with_context(|| format!("Invalid jolene.toml in {}", clone_root.display()))?;
@@ -107,8 +116,8 @@ pub fn load_manifest(clone_root: &Path) -> Result<Manifest> {
 }
 
 pub fn validate_manifest(manifest: &Manifest, clone_root: &Path) -> Result<()> {
-    if let Some(ref prefix) = manifest.package.prefix {
-        validate_prefix(prefix).with_context(|| "Invalid prefix in jolene.toml [package] table")?;
+    if let Some(ref prefix) = manifest.bundle.prefix {
+        validate_prefix(prefix).with_context(|| "Invalid prefix in jolene.toml [bundle] table")?;
     }
 
     if manifest.content.is_empty() {
@@ -400,11 +409,11 @@ mod tests {
     // validate_manifest [template.exclude] tests
 
     use std::collections::BTreeMap;
-    use crate::types::manifest::{ContentDecl, Manifest, Package, TemplateDecl};
+    use crate::types::manifest::{Bundle, ContentDecl, Manifest, TemplateDecl};
 
     fn make_manifest(commands: &[&str], exclude: &[&str]) -> Manifest {
         Manifest {
-            package: Package {
+            bundle: Bundle {
                 name: "test".to_string(),
                 description: "test".to_string(),
                 version: "1.0.0".to_string(),

@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use tempfile::NamedTempFile;
 
 use crate::config::{jolene_root, legacy_state_file, state_file};
-use crate::types::state::{PackageState, State};
+use crate::types::state::{BundleState, State};
 
 /// Advisory file lock for serializing concurrent jolene processes.
 ///
@@ -38,14 +38,27 @@ impl StateLock {
     ///
     /// Prefer this over separate `acquire()` + `load()` calls for mutating
     /// commands to ensure state is never loaded without holding the lock.
+    /// Automatically migrates state.json from the old `packages` key to `bundles`
+    /// if needed, printing a message to stderr.
     pub fn acquire_and_load() -> Result<(Self, State)> {
         let lock = Self::acquire()?;
-        let state = load()?;
+        let (state, needs_migration) = load_with_migration_flag()?;
+        if needs_migration {
+            eprintln!("Migrating state.json: \"packages\" → \"bundles\"");
+            save(&state)?;
+        }
         Ok((lock, state))
     }
 }
 
 pub fn load() -> Result<State> {
+    let (state, _) = load_with_migration_flag()?;
+    Ok(state)
+}
+
+/// Load state.json, also returning whether the file used the old `"packages"` key.
+/// This avoids a second read of the file in `acquire_and_load`.
+fn load_with_migration_flag() -> Result<(State, bool)> {
     let path = state_file()?;
 
     if !path.exists() {
@@ -64,17 +77,25 @@ pub fn load() -> Result<State> {
             std::fs::rename(&legacy, &old).with_context(|| {
                 format!("Failed to rename legacy state file to {}", old.display())
             })?;
-            return Ok(state);
+            return Ok((state, false));
         }
 
-        return Ok(State::default());
+        return Ok((State::default(), false));
     }
 
     let text = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read state file {}", path.display()))?;
 
-    serde_json::from_str(&text)
-        .with_context(|| format!("Failed to parse state file {}", path.display()))
+    // Check for the old "packages" key before deserializing, so we can report
+    // migration without a second file read.
+    let raw: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("Failed to parse state file {}", path.display()))?;
+    let needs_migration = raw.get("packages").is_some() && raw.get("bundles").is_none();
+
+    let state: State = serde_json::from_value(raw)
+        .with_context(|| format!("Failed to parse state file {}", path.display()))?;
+
+    Ok((state, needs_migration))
 }
 
 pub fn save(state: &State) -> Result<()> {
@@ -99,23 +120,23 @@ pub fn save(state: &State) -> Result<()> {
     Ok(())
 }
 
-/// Find a package by its source identifier (exact match on `pkg.source`).
+/// Find a bundle by its source identifier (exact match on `pkg.source`).
 ///
-/// For GitHub packages, also supports a bare repo name (e.g. `"tools"` matches
+/// For GitHub bundles, also supports a bare repo name (e.g. `"tools"` matches
 /// `"alice/tools"`). This short-name lookup is GitHub-specific: local paths and
 /// URLs always contain `/` and are matched exactly by the first branch, but their
 /// components have no meaningful short form.
 ///
 /// For marketplace plugins, also matches by `plugin_name` (e.g. `"review-plugin"`
-/// matches a package with `plugin_name: Some("review-plugin")`).
-pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a PackageState>> {
+/// matches a bundle with `plugin_name: Some("review-plugin")`).
+pub fn find_bundle<'a>(state: &'a State, name: &str) -> Result<Option<&'a BundleState>> {
     if name.contains('/') {
-        return Ok(state.packages.iter().find(|p| p.source == name));
+        return Ok(state.bundles.iter().find(|p| p.source == name));
     }
 
     // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
     let matches: Vec<_> = state
-        .packages
+        .bundles
         .iter()
         .filter(|p| {
             p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
@@ -128,7 +149,7 @@ pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a Packa
         _ => {
             let names: Vec<_> = matches.iter().map(|p| format!("  {}", p.source)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native packages)\n    org/marketplace::plugin-name (marketplace plugins)",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)",
                 name,
                 names.join("\n")
             );
@@ -136,18 +157,18 @@ pub fn find_package<'a>(state: &'a State, name: &str) -> Result<Option<&'a Packa
     }
 }
 
-/// Mutable variant of find_package.
-pub fn find_package_mut<'a>(
+/// Mutable variant of find_bundle.
+pub fn find_bundle_mut<'a>(
     state: &'a mut State,
     name: &str,
-) -> Result<Option<&'a mut PackageState>> {
+) -> Result<Option<&'a mut BundleState>> {
     if name.contains('/') {
-        return Ok(state.packages.iter_mut().find(|p| p.source == name));
+        return Ok(state.bundles.iter_mut().find(|p| p.source == name));
     }
 
     // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
     let matches: Vec<_> = state
-        .packages
+        .bundles
         .iter()
         .filter(|p| {
             p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
@@ -159,12 +180,12 @@ pub fn find_package_mut<'a>(
         [] => Ok(None),
         [source] => {
             let source = source.clone();
-            Ok(state.packages.iter_mut().find(|p| p.source == source))
+            Ok(state.bundles.iter_mut().find(|p| p.source == source))
         }
         _ => {
             let names: Vec<_> = matches.iter().map(|s| format!("  {}", s)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native packages)\n    org/marketplace::plugin-name (marketplace plugins)",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)",
                 name,
                 names.join("\n")
             );
@@ -177,13 +198,13 @@ mod tests {
     use chrono::Utc;
 
     use crate::types::source::Source;
-    use crate::types::state::{PackageState, SourceKind, State};
+    use crate::types::state::{BundleState, SourceKind, State};
 
-    use super::find_package;
+    use super::find_bundle;
 
-    fn make_pkg(source: &str) -> PackageState {
+    fn make_bundle(source: &str) -> BundleState {
         let src = Source::from_github(source).unwrap();
-        PackageState {
+        BundleState {
             source_kind: SourceKind::GitHub,
             source: source.to_string(),
             clone_url: Some(format!("https://github.com/{}.git", source)),
@@ -203,51 +224,51 @@ mod tests {
 
     fn make_state(sources: &[&str]) -> State {
         State {
-            packages: sources.iter().map(|s| make_pkg(s)).collect(),
+            bundles: sources.iter().map(|s| make_bundle(s)).collect(),
         }
     }
 
     #[test]
     fn find_by_full_name() {
         let state = make_state(&["alice/tools", "bob/utils"]);
-        let pkg = find_package(&state, "alice/tools").unwrap().unwrap();
+        let pkg = find_bundle(&state, "alice/tools").unwrap().unwrap();
         assert_eq!(pkg.source, "alice/tools");
     }
 
     #[test]
     fn find_by_repo_name_unambiguous() {
         let state = make_state(&["alice/tools", "bob/utils"]);
-        let pkg = find_package(&state, "tools").unwrap().unwrap();
+        let pkg = find_bundle(&state, "tools").unwrap().unwrap();
         assert_eq!(pkg.source, "alice/tools");
     }
 
     #[test]
     fn find_by_repo_name_ambiguous_errors() {
         let state = make_state(&["alice/tools", "bob/tools"]);
-        assert!(find_package(&state, "tools").is_err());
+        assert!(find_bundle(&state, "tools").is_err());
     }
 
     #[test]
     fn find_missing_full_name_returns_none() {
         let state = make_state(&["alice/tools"]);
-        assert!(find_package(&state, "alice/other").unwrap().is_none());
+        assert!(find_bundle(&state, "alice/other").unwrap().is_none());
     }
 
     #[test]
     fn find_missing_repo_name_returns_none() {
         let state = make_state(&["alice/tools"]);
-        assert!(find_package(&state, "other").unwrap().is_none());
+        assert!(find_bundle(&state, "other").unwrap().is_none());
     }
 
     #[test]
     fn find_in_empty_state_returns_none() {
         let state = make_state(&[]);
-        assert!(find_package(&state, "alice/tools").unwrap().is_none());
+        assert!(find_bundle(&state, "alice/tools").unwrap().is_none());
     }
 
-    fn make_marketplace_pkg(source: &str, plugin_name: &str) -> PackageState {
+    fn make_marketplace_bundle(source: &str, plugin_name: &str) -> BundleState {
         let src = Source::from_github("acme/marketplace").unwrap();
-        PackageState {
+        BundleState {
             source_kind: SourceKind::GitHub,
             source: source.to_string(),
             clone_url: Some("https://github.com/acme/marketplace.git".to_string()),
@@ -268,18 +289,18 @@ mod tests {
     #[test]
     fn find_marketplace_plugin_by_plugin_name() {
         let state = State {
-            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
+            bundles: vec![make_marketplace_bundle("acme/marketplace::review", "review")],
         };
-        let pkg = find_package(&state, "review").unwrap().unwrap();
+        let pkg = find_bundle(&state, "review").unwrap().unwrap();
         assert_eq!(pkg.source, "acme/marketplace::review");
     }
 
     #[test]
     fn find_marketplace_plugin_by_full_source() {
         let state = State {
-            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
+            bundles: vec![make_marketplace_bundle("acme/marketplace::review", "review")],
         };
-        let pkg = find_package(&state, "acme/marketplace::review")
+        let pkg = find_bundle(&state, "acme/marketplace::review")
             .unwrap()
             .unwrap();
         assert_eq!(pkg.plugin_name.as_deref(), Some("review"));
@@ -288,19 +309,19 @@ mod tests {
     #[test]
     fn find_marketplace_plugin_ambiguous_with_repo() {
         let state = State {
-            packages: vec![
-                make_pkg("alice/review"),
-                make_marketplace_pkg("acme/marketplace::review", "review"),
+            bundles: vec![
+                make_bundle("alice/review"),
+                make_marketplace_bundle("acme/marketplace::review", "review"),
             ],
         };
-        assert!(find_package(&state, "review").is_err());
+        assert!(find_bundle(&state, "review").is_err());
     }
 
     #[test]
     fn find_marketplace_plugin_missing_returns_none() {
         let state = State {
-            packages: vec![make_marketplace_pkg("acme/marketplace::review", "review")],
+            bundles: vec![make_marketplace_bundle("acme/marketplace::review", "review")],
         };
-        assert!(find_package(&state, "deploy").unwrap().is_none());
+        assert!(find_bundle(&state, "deploy").unwrap().is_none());
     }
 }

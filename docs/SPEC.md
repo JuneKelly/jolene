@@ -1,11 +1,11 @@
 # Jolene Specification
 
-A package manager for coding agent commands, skills, and agents.
+A plugin manager for coding agent commands, skills, and agents.
 
 ## Overview
 
-Jolene installs packages from git repositories that bundle commands, skills,
-and agents for coding AI tools. Packages are cloned into a local store and
+Jolene installs bundles from git repositories that bundle commands, skills,
+and agents for coding AI tools. Bundles are cloned into a local store and
 installed to target tool directories using symlinks.
 
 ### Source Types
@@ -28,14 +28,14 @@ Jolene supports three install source types:
 
 ### Content Types
 
-| Content Type | Package Directory | Claude Code            | OpenCode                        | Codex                |
+| Content Type | Bundle Directory | Claude Code            | OpenCode                        | Codex                |
 |--------------|-------------------|------------------------|---------------------------------|----------------------|
 | Commands     | `commands/*.md`   | `~/.claude/commands/`  | `~/.config/opencode/commands/`  | not supported        |
 | Skills       | `skills/*/`       | `~/.claude/skills/`    | `~/.config/opencode/skills/`    | `~/.codex/skills/`   |
 | Agents       | `agents/*.md`     | `~/.claude/agents/`    | `~/.config/opencode/agents/`    | not supported        |
 
 When a content type is not supported by a target, jolene skips it and prints
-a warning so the user knows the package is only partially installed.
+a warning so the user knows the bundle is only partially installed.
 
 ---
 
@@ -193,10 +193,10 @@ Installing from marketplace acme-corp/tools...
 ### jolene uninstall
 
 ```
-jolene uninstall <package> [--from <target>...] [--purge]
+jolene uninstall <bundle> [--from <target>...] [--purge]
 ```
 
-- `<package>` — `Author/repo` or just `repo` if unambiguous.
+- `<bundle>` — `Author/repo` or just `repo` if unambiguous.
 - `--from <target>` — Remove from specific targets. If omitted, removes from all.
 - `--purge` — Also delete the cloned repo and rendered copies from the local store.
 
@@ -209,7 +209,7 @@ jolene list [--target <target>]
 **Example output:**
 
 ```
-Installed packages:
+Installed bundles:
 
   junebug/review-tools
     Source:  github
@@ -233,30 +233,30 @@ Installed packages:
 ### jolene update
 
 ```
-jolene update [<package>]
+jolene update [<bundle>]
 ```
 
-Updates one or all packages by pulling the latest from the default branch.
+Updates one or all bundles by pulling the latest from the default branch.
 Creates symlinks for new content, removes symlinks for deleted content,
 and updates the state file.
 
 ### jolene info
 
 ```
-jolene info <package>
+jolene info <bundle>
 ```
 
-Shows detailed information about an installed package including source URL,
+Shows detailed information about an installed bundle including source URL,
 installed targets, branch, commit, and all content items.
 
 ### jolene contents
 
-Browse the contents of a marketplace or installed package before installing.
+Browse the contents of a marketplace or installed bundle before installing.
 
 ```
 jolene contents --marketplace --github <org/repo>    # remote marketplace
-jolene contents <installed-package>                   # installed package
-jolene contents --github <owner/repo>                 # remote native package
+jolene contents <installed-bundle>                   # installed bundle
+jolene contents --github <owner/repo>                 # remote native bundle
 ```
 
 **Example (marketplace):**
@@ -280,7 +280,7 @@ Install with: jolene install --marketplace --github acme-corp/tools --pick <plug
 Plugins that contain only hooks/MCP/LSP (no commands, skills, or agents) are
 flagged as "not installable by jolene."
 
-**Example (installed package):**
+**Example (installed bundle):**
 
 ```
 $ jolene contents review-plugin
@@ -303,13 +303,13 @@ jolene doctor
 Verifies health of all installations:
 - Checks all recorded symlinks exist and resolve to valid targets.
 - Reports broken symlinks, missing clones, and orphaned symlinks.
-- Reports orphaned `rendered/` directories not referenced by any installed package.
+- Reports orphaned `rendered/` directories not referenced by any installed bundle.
 
 ---
 
-## 2. Package Format
+## 2. Bundle Format
 
-A jolene package is a git repository with a `jolene.toml` manifest and
+A jolene bundle is a git repository with a `jolene.toml` manifest and
 content organized in conventional directories.
 
 ### Directory Structure
@@ -329,7 +329,7 @@ repo-root/
     reviewer.md
 ```
 
-A package MUST have a `jolene.toml` and at least one content directory
+A bundle MUST have a `jolene.toml` and at least one content directory
 (`commands/`, `skills/`, or `agents/`) with at least one item inside.
 
 ### Content Rules
@@ -349,7 +349,7 @@ A package MUST have a `jolene.toml` and at least one content directory
 ### Manifest: jolene.toml
 
 ```toml
-[package]
+[bundle]
 name = "review-tools"
 description = "Code review commands and analysis skills"
 version = "1.0.0"
@@ -357,7 +357,7 @@ authors = ["junebug <junebug@example.com>"]
 license = "MIT"
 prefix = "jb"    # optional — default prefix for installed content names
 
-[package.urls]
+[bundle.urls]
 repository = "https://github.com/junebug/review-tools"
 homepage = "https://junebug.dev/review-tools"    # optional
 
@@ -376,15 +376,15 @@ max_retries   = 3
 
 | Field         | Type       | Description                              |
 |---------------|------------|------------------------------------------|
-| `name`        | string     | Package name. Must match `[a-z0-9-]+`.   |
-| `description` | string     | One-line description of the package.      |
+| `name`        | string     | Bundle name. Must match `[a-z0-9-]+`.   |
+| `description` | string     | One-line description of the bundle.      |
 | `version`     | string     | Semantic version (e.g. `1.0.0`).         |
 | `authors`     | string[]   | List of authors. Format: `"Name <email>"` or `"Name"`. |
 | `license`     | string     | SPDX license identifier (e.g. `MIT`, `Apache-2.0`). |
 
 **Required content declaration:**
 
-The `[content]` table declares exactly which items the package provides.
+The `[content]` table declares exactly which items the bundle provides.
 Only declared items are installed — files in content directories that aren't
 listed in the manifest are ignored. At least one item must be declared.
 
@@ -400,9 +400,9 @@ All three fields are optional, but at least one must be present and non-empty.
 
 | Field                  | Type   | Description                        |
 |------------------------|--------|------------------------------------|
-| `package.prefix`          | string | Default prefix for installed content names. Overridable with `--prefix` / `--no-prefix` at install time. Must match `[a-z0-9-]+`, 1-64 chars, no leading/trailing `-`, no `--`. |
-| `package.urls.repository` | string | Source repository URL.          |
-| `package.urls.homepage`   | string | Project homepage or docs URL.   |
+| `bundle.prefix`          | string | Default prefix for installed content names. Overridable with `--prefix` / `--no-prefix` at install time. Must match `[a-z0-9-]+`, 1-64 chars, no leading/trailing `-`, no `--`. |
+| `bundle.urls.repository` | string | Source repository URL.          |
+| `bundle.urls.homepage`   | string | Project homepage or docs URL.   |
 | `template.vars.*`         | mixed  | Template variables available as `jolene.vars.*` in content files. Values may be strings, booleans, integers, floats, arrays, or inline tables (nested objects). TOML datetime is not supported. Overridable at install time with `--var` / `--vars-json`. See **Templating** below. |
 
 ### Marketplace Format (Claude Code Plugin Repos)
@@ -459,7 +459,7 @@ scanning the plugin directory:
 - `skills/*/SKILL.md` → Skill items (SKILL.md must exist)
 - `agents/*.md` → Agent items
 
-This is the same directory layout used by native jolene packages and by Claude
+This is the same directory layout used by native jolene bundles and by Claude
 Code plugins. The only difference is the discovery mechanism (filesystem scan
 vs. manifest declaration).
 
@@ -498,24 +498,24 @@ real config files. In normal usage, neither needs to be set.
     a3f2c1d8.../                    # git clone (64-char SHA256 hex)
     b8e1d4f9.../                    # git clone
   rendered/                         # rendered template copies (per-target)
-    a3f2c1d8.../                    # only present when package has templated content
+    a3f2c1d8.../                    # only present when bundle has templated content
       claude-code/
         commands/review.md          # rendered from template
       opencode/
         commands/review.md          # may differ (target-conditional content)
 ```
 
-Each directory under `repos/` is named with the SHA256 of the package's canonical key
+Each directory under `repos/` is named with the SHA256 of the bundle's canonical key
 (see Store key below). `state.json` is the authoritative mapping from hash to source.
 
 ### State File: state.json
 
-Tracks installed packages and their symlinks. JSON is used because the state
+Tracks installed bundles and their symlinks. JSON is used because the state
 file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
 ```json
 {
-  "packages": [
+  "bundles": [
     {
       "source_kind": "github",
       "source": "junebug/review-tools",
@@ -552,7 +552,7 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 ```
 
 **Path conventions:**
-- `src` paths are relative to the package clone root (or plugin subdirectory for relative marketplace plugins).
+- `src` paths are relative to the bundle clone root (or plugin subdirectory for relative marketplace plugins).
 - `dst` paths use `~` for home directory (expanded at runtime).
 - `clone_path` is relative to `~/.jolene/` and always has the form `repos/{64-char-hex}`.
 
@@ -560,12 +560,12 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
 | Field         | Description                                                    |
 |---------------|----------------------------------------------------------------|
-| `source_kind` | `"github"` \| `"local"` \| `"url"`. Always present for packages installed with current jolene. Defaults to `"github"` when absent — this handles state files that predate the field (entries from the legacy `state.toml` format before the SHA256 store was introduced). Safe default because the legacy format only recorded GitHub packages. |
-| `source`      | Human-readable identifier. For native packages: `owner/repo`, absolute path, or URL. For relative marketplace plugins: `owner/marketplace::plugin-name`. Used for display and lookup. |
-| `clone_url`   | The git URL used to clone the package. Absent for entries migrated from the legacy `state.toml` format. |
+| `source_kind` | `"github"` \| `"local"` \| `"url"`. Always present for bundles installed with current jolene. Defaults to `"github"` when absent — this handles state files that predate the field (entries from the legacy `state.toml` format before the SHA256 store was introduced). Safe default because the legacy format only recorded GitHub bundles. |
+| `source`      | Human-readable identifier. For native bundles: `owner/repo`, absolute path, or URL. For relative marketplace plugins: `owner/marketplace::plugin-name`. Used for display and lookup. |
+| `clone_url`   | The git URL used to clone the bundle. Absent for entries migrated from the legacy `state.toml` format. |
 | `clone_path`  | `repos/{64-char-hex}` — relative to `~/.jolene/`. The hex is the SHA256 store key. |
 
-**Marketplace provenance fields** (optional, present only for marketplace-sourced packages):
+**Marketplace provenance fields** (optional, present only for marketplace-sourced bundles):
 
 | Field         | Description                                                    |
 |---------------|----------------------------------------------------------------|
@@ -579,7 +579,7 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 |----------|----------------------------------------------------------------|
 | `prefix` | The install-time prefix applied to content names (e.g. `"jb"` → `jb--review.md`). Absent when no prefix was used. Locked at install time — `jolene update` preserves the stored prefix. To change prefix, uninstall and reinstall. |
 
-**Template fields** (optional, present only for packages with `--var` or `--vars-json` overrides):
+**Template fields** (optional, present only for bundles with `--var` or `--vars-json` overrides):
 
 | Field            | Description                                                    |
 |------------------|----------------------------------------------------------------|
@@ -589,19 +589,19 @@ file is machine-managed (never hand-edited) and handles nested arrays naturally.
 
 | Field       | Description                                                    |
 |-------------|----------------------------------------------------------------|
-| `src`       | Relative path to the content item within the package clone root (e.g. `"commands/review.md"`). |
+| `src`       | Relative path to the content item within the bundle clone root (e.g. `"commands/review.md"`). |
 | `dst`       | Display path of the installed symlink (e.g. `"~/.claude/commands/review.md"`). |
 | `templated` | `true` if the symlink points to a rendered copy in `rendered/` instead of `repos/`. Defaults to `false` (omitted for non-templated items). |
 
 **Store key for marketplace plugins:**
 - **Relative-path plugins** share the marketplace repo's store key. Multiple
   relative plugins from the same marketplace share one clone directory but get
-  distinct `PackageState` entries (distinguished by `source` which includes the
+  distinct `BundleState` entries (distinguished by `source` which includes the
   `::plugin-name` suffix).
 - **External-source plugins** (GitHub/URL) get their own store key and clone,
-  just like any other jolene package. The marketplace merely told us about them.
+  just like any other jolene bundle. The marketplace merely told us about them.
 
-**Store key:** Each package is identified by the SHA256 hex digest of its canonical key string:
+**Store key:** Each bundle is identified by the SHA256 hex digest of its canonical key string:
 - GitHub: SHA256 of `github||owner/repo`
 - Local:  SHA256 of `local||/absolute/path`
 - URL:    SHA256 of `url||https://...`
@@ -613,7 +613,7 @@ The 64-character hex digest is used as the directory name under `repos/`.
 
 ```json
 {
-  "packages": [
+  "bundles": [
     {
       "source_kind": "github",
       "source": "acme-corp/tools::review-plugin",
@@ -696,7 +696,7 @@ clone URLs and filesystem paths.
     - Warn if 'name' or 'description' is missing.
     Frontmatter parsing uses the same rules as skill checks (step 3b).
 
-3d. VALIDATE TEMPLATE OVERRIDES (native packages only)
+3d. VALIDATE TEMPLATE OVERRIDES (native bundles only)
     If --var or --vars-json flags were given:
     - Parse --vars-json values as JSON; error if the top-level value is not
       a JSON object, or if any value within it is null.
@@ -705,7 +705,7 @@ clone URLs and filesystem paths.
     - For each --var value, verify the inferred type matches the declared type.
     This step is fatal and runs regardless of whether any content is templated.
 
-3e. SCAN FOR TEMPLATES (native packages only)
+3e. SCAN FOR TEMPLATES (native bundles only)
     For each declared content item:
     - Commands/Agents: read the .md file, scan for {~, {%~, or {#~.
     - Skills: recursively scan every file in the skill directory.
@@ -722,7 +722,7 @@ clone URLs and filesystem paths.
    - If --to omitted: detect by checking which config roots exist.
    - If none found: error with guidance to use --to.
 
-5b. RENDER TEMPLATES (native packages only, if any items are templated)
+5b. RENDER TEMPLATES (native bundles only, if any items are templated)
     For each target × each templated content item:
     - Render using MiniJinja with the full jolene context for that target.
     - Write rendered output to ~/.jolene/rendered/{hash}/{target}/{relative_path}.
@@ -732,9 +732,9 @@ clone URLs and filesystem paths.
     Rendering is per-target because jolene.target differs per target.
 
 6. CHECK CONFLICTS (per target, per content item)
-   - Destination is a symlink into ~/.jolene/ from a different package:
-     → Package conflict. Abort with message naming both packages.
-   - Destination is a symlink into ~/.jolene/ from the same package:
+   - Destination is a symlink into ~/.jolene/ from a different bundle:
+     → Bundle conflict. Abort with message naming both bundles.
+   - Destination is a symlink into ~/.jolene/ from the same bundle:
      → Reinstall. Skip (already correct).
    - Destination exists but is not a jolene-managed symlink:
      → User conflict. Abort, ask user to remove/rename.
@@ -816,15 +816,15 @@ clone URLs and filesystem paths.
        External plugins use their own source identity.
 ```
 
-### Package Name Lookup
+### Bundle Name Lookup
 
-Packages can be referenced by short name in `uninstall`, `update`, `info`,
+Bundles can be referenced by short name in `uninstall`, `update`, `info`,
 and `contents` commands:
 
-- **Native packages:** `"tools"` matches `"alice/tools"` (the repo component).
-- **Marketplace plugins:** `"review-plugin"` matches any package with
+- **Native bundles:** `"tools"` matches `"alice/tools"` (the repo component).
+- **Marketplace plugins:** `"review-plugin"` matches any bundle with
   `plugin_name = "review-plugin"`.
-- If multiple packages match a short name, jolene errors with "Ambiguous name"
+- If multiple bundles match a short name, jolene errors with "Ambiguous name"
   and lists the matches.
 
 ### Rollback
@@ -836,10 +836,10 @@ the state file. This ensures state always reflects reality.
 ### Uninstall: Step by Step
 
 ```
-1. LOOKUP package in state.json. Match by Author/repo or repo (error if ambiguous).
+1. LOOKUP bundle in state.json. Match by Author/repo or repo (error if ambiguous).
 2. SCOPE to --from targets, or all targets if omitted.
 3. REMOVE symlinks. Warn (don't error) if a symlink is already gone.
-4. UPDATE state.json. Remove target entries; remove package if no targets remain.
+4. UPDATE state.json. Remove target entries; remove bundle if no targets remain.
 5. PURGE if --purge flag set: delete repos/{hash}/ and rendered/{hash}/ (if present).
 ```
 
@@ -849,7 +849,7 @@ the state file. This ensures state always reflects reality.
 1. git pull in the clone directory.
 2. Diff content: compare current files against recorded symlinks.
 
-2b. RE-SCAN AND RE-RENDER (native packages only)
+2b. RE-SCAN AND RE-RENDER (native bundles only)
     - Re-scan all content items for template expressions.
     - Validate stored var_overrides against the updated [template.vars].
       If a stored override key is no longer declared, or its declared type
@@ -896,7 +896,7 @@ codex:
 
 ### Path Resolution Example
 
-Package content `commands/review.md` installed to `opencode` (non-templated):
+Bundle content `commands/review.md` installed to `opencode` (non-templated):
 
 ```
 symlink_source (absolute): /Users/you/.jolene/repos/{hash}/commands/review.md
@@ -929,7 +929,7 @@ that content and prints a warning:
 - **Auto-update:** `git pull` in the store updates all installed content with
   no re-copy step (non-templated items only; templated items are re-rendered
   during `jolene update`).
-- **Traceability:** `readlink` shows exactly which package provides a file.
+- **Traceability:** `readlink` shows exactly which bundle provides a file.
 - **Proven:** Claude Code already works with symlinked commands.
 - **Efficient:** No file duplication.
 
@@ -966,13 +966,13 @@ without template expressions are symlinked to `repos/` as before. Both
 
 ### Optional Content Prefix
 
-By default, symlinks use the original filename from the package. `/review` stays
+By default, symlinks use the original filename from the bundle. `/review` stays
 `/review`. When a prefix is active (via `--prefix` CLI flag or the manifest's
 `prefix` field), destination names become `{prefix}--{name}` using a double-hyphen
 separator: `/review` → `/jb--review`.
 
 This is a filename-level convention — not a namespace with scoping or resolution
-rules. The prefix prevents name collisions between packages without requiring
+rules. The prefix prevents name collisions between bundles without requiring
 harness-specific features. The `--` separator was chosen because it:
 - Is visually distinct and unlikely in natural names
 - Is valid in filenames across all platforms
@@ -987,7 +987,7 @@ The prefix is locked at install time and stored in `state.json`. `jolene update`
 preserves the stored prefix and re-validates it against current rules. To change
 prefix, uninstall and reinstall.
 
-**Prefix and manifest changes on update:** If the package author changes or
+**Prefix and manifest changes on update:** If the bundle author changes or
 removes the `prefix` field in `jolene.toml` between versions, it has no effect
 on existing installs — the stored prefix is always used. This is intentional:
 the user's install-time choice takes precedence over the manifest default.
@@ -1009,7 +1009,7 @@ time. This enables cross-references between content items (e.g. a skill that
 references a companion command by its installed name, including prefix) and
 target-conditional content.
 
-Templating applies to **native packages only**. Marketplace-sourced content is
+Templating applies to **native bundles only**. Marketplace-sourced content is
 not processed for templates.
 
 For a comprehensive guide with examples and common patterns, see
@@ -1041,9 +1041,9 @@ hard error at install time, caught before any symlinks are created.
 | `jolene.resolve("name")`        | Function | Installed name of content item `name`, with prefix applied. Errors if not declared. A second argument disambiguates when a name appears in multiple content types: `jolene.resolve("name", "command")`. |
 | `jolene.prefix`                 | String   | The active prefix, or `""` if none.                                  |
 | `jolene.target`                 | String   | Target slug: `"claude-code"`, `"opencode"`, or `"codex"`.           |
-| `jolene.package.name`           | String   | Package name from manifest.                                          |
-| `jolene.package.version`        | String   | Package version from manifest.                                       |
-| `jolene.vars.*`                 | Mixed    | Package-defined variables from `[template.vars]`, overridable via `--var` / `--vars-json`. |
+| `jolene.bundle.name`           | String   | Bundle name from manifest.                                          |
+| `jolene.bundle.version`        | String   | Bundle version from manifest.                                       |
+| `jolene.vars.*`                 | Mixed    | Bundle-defined variables from `[template.vars]`, overridable via `--var` / `--vars-json`. |
 
 No MiniJinja built-in filters, functions, or globals are registered beyond the
 `jolene` global. `{% if %}` and `{% for %}` control flow are available. `{% macro %}`,
@@ -1101,7 +1101,7 @@ API docs: {~ jolene.vars.doc_url ~}
 Error: Cannot access local path: ./nonexistent
 ```
 
-### Package Not Found
+### Bundle Not Found
 
 ```
 Error: Failed to clone https://github.com/nonexistent/repo.git
@@ -1112,8 +1112,8 @@ Error: Failed to clone https://github.com/nonexistent/repo.git
 
 ```
 Error: junebug/repo is missing jolene.toml
-  Every jolene package must include a jolene.toml manifest.
-  See https://github.com/jolene-pm/jolene#package-format
+  Every jolene bundle must include a jolene.toml manifest.
+  See https://github.com/jolene-pm/jolene#bundle-format
 ```
 
 ```
@@ -1143,7 +1143,7 @@ Error: No supported targets detected.
   Use --to <target> to specify a target explicitly.
 ```
 
-### Package Conflict
+### Bundle Conflict
 
 ```
 Error: Conflict installing junebug/my-tools to claude-code:
@@ -1160,9 +1160,9 @@ Error: Conflict installing junebug/my-tools to claude-code:
   Remove or rename ~/.claude/commands/review.md, then retry.
 ```
 
-### Ambiguous Package Name
+### Ambiguous Bundle Name
 
-Native packages (same repo name from different owners):
+Native bundles (same repo name from different owners):
 
 ```
 Error: Ambiguous name 'review-tools'. Multiple matches:
@@ -1170,7 +1170,7 @@ Error: Ambiguous name 'review-tools'. Multiple matches:
   author-b/review-tools
 
   Use the full identifier:
-    owner/repo (native packages)
+    owner/repo (native bundles)
     org/marketplace::plugin-name (marketplace plugins)
 ```
 
@@ -1182,7 +1182,7 @@ Error: Ambiguous name 'review-plugin'. Multiple matches:
   other-corp/plugins::review-plugin
 
   Use the full identifier:
-    owner/repo (native packages)
+    owner/repo (native bundles)
     org/marketplace::plugin-name (marketplace plugins)
 ```
 
@@ -1218,7 +1218,7 @@ Error: Plugin 'npm-thing' uses an unsupported source type (npm/pip are not yet s
 ```
 Error: Template error in skills/foo/SKILL.md:
   jolene.resolve("baz") references content item 'baz', which is not
-  declared in this package.
+  declared in this bundle.
   Declared items: bar (command), foo (skill)
 ```
 
@@ -1256,7 +1256,7 @@ Error: --vars-json: key 'status' has a null value, which is not supported.
 
 ```
 Error: Stored variable override 'old_key' is no longer declared in [template.vars].
-  The package update removed this variable. Uninstall and reinstall with corrected overrides:
+  The bundle update removed this variable. Uninstall and reinstall with corrected overrides:
     jolene uninstall owner/repo && jolene install --github owner/repo [--var key=value] [--vars-json ...]
   Declared vars: doc_url, model_hint
 ```
@@ -1287,26 +1287,26 @@ Items explicitly out of scope for MVP, documented for future consideration:
 
 ### Per-Project Installation
 
-Install packages scoped to a project rather than globally. Key challenges:
+Install bundles scoped to a project rather than globally. Key challenges:
 - Symlinks in project directories use absolute paths (not portable for VCS).
 - Requires a project-level manifest (`jolene.lock`) and `jolene install`
   on each machine (similar to npm/cargo).
-- Precedence rules needed between global and project-scoped packages.
+- Precedence rules needed between global and project-scoped bundles.
 - Significantly different UX model from global installation.
 
 ### Version Pinning
 
-Lock packages to specific git tags or commits rather than tracking HEAD.
+Lock bundles to specific git tags or commits rather than tracking HEAD.
 The manifest's `version` field and git tags provide the foundation.
 
-### Package Registry
+### Bundle Registry
 
-A searchable index of jolene packages, enabling `jolene search review`
+A searchable index of jolene bundles, enabling `jolene search review`
 instead of requiring users to know the exact `Author/repo`.
 
 ### Dependency Resolution
 
-Packages that depend on other packages. Requires a solver and lock file.
+Bundles that depend on other bundles. Requires a solver and lock file.
 
 ### Private Repository Support
 

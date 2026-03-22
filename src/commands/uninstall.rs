@@ -6,14 +6,14 @@ use crate::state;
 use crate::symlink::{expand_tilde, remove_symlink};
 use crate::types::target::Target;
 
-pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<()> {
+pub fn run(bundle: &str, from: &[String], purge: bool, out: &Output) -> Result<()> {
     let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
 
-    // 1. Lookup package
-    let pkg = state::find_package(&app_state, package)?;
+    // 1. Lookup bundle
+    let pkg = state::find_bundle(&app_state, bundle)?;
     let pkg = match pkg {
         Some(p) => p,
-        None => bail!("Package '{}' is not installed.", package),
+        None => bail!("Bundle '{}' is not installed.", bundle),
     };
     let source = pkg.source.clone();
 
@@ -52,7 +52,7 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
     };
 
     // 3. Remove symlinks
-    let pkg_mut = state::find_package_mut(&mut app_state, &source)?.unwrap();
+    let pkg_mut = state::find_bundle_mut(&mut app_state, &source)?.unwrap();
 
     for slug in &target_slugs {
         let Some(inst) = pkg_mut.installations.iter().find(|i| &i.target == slug) else {
@@ -73,25 +73,25 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
         }
     }
 
-    // 4. Update state — remove target entries; remove package if no targets remain
-    let pkg_mut = state::find_package_mut(&mut app_state, &source)?.unwrap();
+    // 4. Update state — remove target entries; remove bundle if no targets remain
+    let pkg_mut = state::find_bundle_mut(&mut app_state, &source)?.unwrap();
     pkg_mut
         .installations
         .retain(|i| !target_slugs.contains(&i.target));
 
-    let remove_package = pkg_mut.installations.is_empty();
+    let remove_bundle = pkg_mut.installations.is_empty();
     let clone_path = pkg_mut.clone_path.clone();
 
-    if remove_package {
-        app_state.packages.retain(|p| p.source != source);
+    if remove_bundle {
+        app_state.bundles.retain(|p| p.source != source);
     }
 
     state::save(&app_state)?;
 
     // 5. Purge clone and rendered files if requested
-    if purge && remove_package {
+    if purge && remove_bundle {
         let clone_still_needed = app_state
-            .packages
+            .bundles
             .iter()
             .any(|p| p.clone_path == clone_path);
         if clone_still_needed {
@@ -118,7 +118,7 @@ pub fn run(package: &str, from: &[String], purge: bool, out: &Output) -> Result<
             }
         }
     } else if purge {
-        out.print("  --purge skipped: package still installed to other targets.");
+        out.print("  --purge skipped: bundle still installed to other targets.");
     }
 
     out.print(format!("Uninstalled {}", source));

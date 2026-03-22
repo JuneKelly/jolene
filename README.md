@@ -1,11 +1,11 @@
 # Jolene
 
-A package manager for coding agent commands, skills, and agents.
+A plugin manager for coding agent commands, skills, and agents.
 
-Jolene installs packages from git repositories into the config directories
-of your AI coding tools — Claude Code, OpenCode, and Codex. Packages are cloned
+Jolene installs bundles from git repositories into the config directories
+of your AI coding tools — Claude Code, OpenCode, and Codex. Bundles are cloned
 locally and content is installed via symlinks, so a single `jolene update` pulls
-the latest from every package you have installed.
+the latest from every bundle you have installed.
 
 Jolene also works with **Claude Code marketplace repos** — install individual
 plugins from existing `.claude-plugin/marketplace.json` catalogs without
@@ -30,7 +30,7 @@ This requires [just](https://github.com/just-systems/just) and a Rust toolchain.
 
 ## Usage
 
-### Install a package
+### Install a bundle
 
 ```sh
 jolene install --github <owner/repo> [--to <target>...] [--prefix <value> | --no-prefix] [--var key=value...] [--vars-json '{...}'...]
@@ -59,8 +59,8 @@ Installed JuneKelly/co-review to claude-code
 ```
 
 Use `--no-prefix` to suppress a manifest-defined prefix and install flat.
-Package authors can set a default prefix in `jolene.toml` with `prefix = "abc"`
-in the `[package]` table.
+Bundle authors can set a default prefix in `jolene.toml` with `prefix = "abc"`
+in the `[bundle]` table.
 
 ```
 $ jolene install --github JuneKelly/co-review --to claude-code
@@ -113,8 +113,8 @@ installation.
 
 ```sh
 jolene contents --marketplace --github <org/repo>    # browse a marketplace
-jolene contents <installed-package>                   # inspect an installed package
-jolene contents --github <owner/repo>                 # inspect a native package
+jolene contents <installed-bundle>                   # inspect an installed bundle
+jolene contents --github <owner/repo>                 # inspect a native bundle
 ```
 
 ```
@@ -132,14 +132,14 @@ Available plugins (3):
 Install with: jolene install --marketplace --github acme-corp/tools --pick <plugin>
 ```
 
-### List installed packages
+### List installed bundles
 
 ```sh
 jolene list [--target <target>]
 ```
 
 ```
-Installed packages:
+Installed bundles:
 
   JuneKelly/co-review
     Source:  github
@@ -148,28 +148,28 @@ Installed packages:
     Version: (main@abc1234)
 ```
 
-### Update packages
+### Update bundles
 
 ```sh
-jolene update [<package>]
+jolene update [<bundle>]
 ```
 
 Pulls the latest commits, adds symlinks for new content, and removes symlinks
-for deleted content. Omit `<package>` to update everything.
+for deleted content. Omit `<bundle>` to update everything.
 
-### Show package details
-
-```sh
-jolene info <package>
-```
-
-### Uninstall a package
+### Show bundle details
 
 ```sh
-jolene uninstall <package> [--from <target>...] [--purge]
+jolene info <bundle>
 ```
 
-Removes all symlinks for the package. `--purge` also deletes the cloned
+### Uninstall a bundle
+
+```sh
+jolene uninstall <bundle> [--from <target>...] [--purge]
+```
+
+Removes all symlinks for the bundle. `--purge` also deletes the cloned
 repository from the local store.
 
 ### Check installation health
@@ -196,11 +196,11 @@ Targets are auto-detected by checking whether their config root exists. Use
 
 ---
 
-## Package Format
+## Bundle Format
 
-### Native packages
+### Native bundles
 
-A jolene package is a git repository with a `jolene.toml` manifest and
+A jolene bundle is a git repository with a `jolene.toml` manifest and
 content in conventional directories.
 
 ### Directory structure
@@ -220,7 +220,7 @@ repo-root/
 ### jolene.toml
 
 ```toml
-[package]
+[bundle]
 name = "review-tools"
 description = "Code review commands and analysis skills"
 version = "1.0.0"
@@ -228,7 +228,7 @@ authors = ["junebug <junebug@example.com>"]
 license = "MIT"
 prefix = "jb"    # optional — default prefix for installed content names
 
-[package.urls]
+[bundle.urls]
 repository = "https://github.com/junebug/review-tools"
 
 [content]
@@ -280,7 +280,7 @@ Available context:
 - `jolene.resolve("name")` — installed name of a content item, with prefix applied
 - `jolene.prefix` — the active prefix, or `""` if none
 - `jolene.target` — target slug (`"claude-code"`, `"opencode"`, `"codex"`)
-- `jolene.package.name` / `jolene.package.version` — from manifest
+- `jolene.bundle.name` / `jolene.bundle.version` — from manifest
 - `jolene.vars.*` — variables declared in `[template.vars]`
 
 Override template variables at install time:
@@ -293,13 +293,13 @@ jolene install --github foo/bar \
 ```
 
 Variable overrides are stored in the state file and preserved across
-`jolene update`. Templating applies to native packages only — marketplace
+`jolene update`. Templating applies to native bundles only — marketplace
 content is not processed.
 
 See [docs/TEMPLATING.md](docs/TEMPLATING.md) for the full templating guide,
 and [docs/SPEC.md](docs/SPEC.md) Section 7 for the specification.
 
-### Marketplace packages
+### Marketplace plugins
 
 Claude Code marketplace repos use `.claude-plugin/marketplace.json` to catalog
 plugins. Each plugin has its own directory with the same `commands/`, `skills/`,

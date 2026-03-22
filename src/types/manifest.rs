@@ -8,7 +8,8 @@ use super::var_value::VarValue;
 /// Top-level jolene.toml structure.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Manifest {
-    pub package: Package,
+    #[serde(alias = "package")]
+    pub bundle: Bundle,
     pub content: ContentDecl,
     #[serde(default)]
     pub template: Option<TemplateDecl>,
@@ -52,7 +53,7 @@ impl Manifest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Package {
+pub struct Bundle {
     #[allow(dead_code)]
     pub name: String,
     pub description: String,
@@ -70,7 +71,7 @@ pub struct Urls {
     pub homepage: Option<String>,
 }
 
-/// Declares which content items the package provides.
+/// Declares which content items the bundle provides.
 /// At least one field must be non-empty.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct ContentDecl {
@@ -199,7 +200,7 @@ mod tests {
 
     fn manifest_with_exclude(exclude: &[&str]) -> Manifest {
         Manifest {
-            package: Package {
+            bundle: Bundle {
                 name: "test".to_string(),
                 description: "test".to_string(),
                 version: "1.0.0".to_string(),
@@ -219,7 +220,7 @@ mod tests {
     #[test]
     fn template_exclude_absent_returns_empty() {
         let m = Manifest {
-            package: Package {
+            bundle: Bundle {
                 name: "test".to_string(),
                 description: "test".to_string(),
                 version: "1.0.0".to_string(),

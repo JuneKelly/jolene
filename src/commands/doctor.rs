@@ -14,11 +14,11 @@ pub fn run(out: &Output) -> Result<()> {
 
     out.print("Checking installations...\n");
 
-    if app_state.packages.is_empty() {
-        out.verbose("No packages installed.");
+    if app_state.bundles.is_empty() {
+        out.verbose("No bundles installed.");
     }
 
-    for pkg in &app_state.packages {
+    for pkg in &app_state.bundles {
         let clone_root = jolene_root.join(&pkg.clone_path);
 
         // Check clone exists
@@ -83,7 +83,7 @@ pub fn run(out: &Output) -> Result<()> {
     let rendered_root = config::rendered_root()?;
     if rendered_root.exists() {
         let known_keys: HashSet<String> = app_state
-            .packages
+            .bundles
             .iter()
             .map(|p| p.store_key().to_string())
             .collect();
@@ -95,7 +95,7 @@ pub fn run(out: &Output) -> Result<()> {
                     && !known_keys.contains(name)
                 {
                     out.print(format!(
-                        "  [ORPHANED RENDERED] {} — not referenced by any installed package",
+                        "  [ORPHANED RENDERED] {} — not referenced by any installed bundle",
                         entry.path().display()
                     ));
                     issues += 1;

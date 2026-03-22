@@ -29,13 +29,13 @@ impl fmt::Display for SourceKind {
 /// Root of state.json.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct State {
-    #[serde(default)]
-    pub packages: Vec<PackageState>,
+    #[serde(default, alias = "packages")]
+    pub bundles: Vec<BundleState>,
 }
 
-/// One installed package entry.
+/// One installed bundle entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageState {
+pub struct BundleState {
     /// Source type. Defaults to GitHub for pre-existing entries.
     #[serde(default)]
     pub source_kind: SourceKind,
@@ -44,7 +44,7 @@ pub struct PackageState {
     /// - Local:  absolute path string
     /// - Url:    the full URL
     pub source: String,
-    /// The git URL that was used to clone this package.
+    /// The git URL that was used to clone this bundle.
     /// None for pre-existing entries that pre-date this field.
     #[serde(default)]
     pub clone_url: Option<String>,
@@ -56,10 +56,10 @@ pub struct PackageState {
     pub updated_at: DateTime<Utc>,
     #[serde(default)]
     pub installations: Vec<Installation>,
-    /// When this package came from a marketplace, the marketplace source identifier.
+    /// When this bundle came from a marketplace, the marketplace source identifier.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub marketplace: Option<String>,
-    /// When this package came from a marketplace, the plugin name within it.
+    /// When this bundle came from a marketplace, the plugin name within it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_name: Option<String>,
     /// For relative marketplace plugins, the subdirectory within the clone
@@ -74,8 +74,8 @@ pub struct PackageState {
     pub var_overrides: Option<BTreeMap<String, VarValue>>,
 }
 
-impl PackageState {
-    /// The 64-char hex SHA256 identifying this package within `~/.jolene/repos/`.
+impl BundleState {
+    /// The 64-char hex SHA256 identifying this bundle within `~/.jolene/repos/`.
     pub fn store_key(&self) -> &str {
         let key = self
             .clone_path
@@ -90,7 +90,7 @@ impl PackageState {
     }
 }
 
-/// One target's installation record within a package.
+/// One target's installation record within a bundle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Installation {
     /// Target slug, e.g. "claude-code"
