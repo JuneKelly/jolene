@@ -7,9 +7,14 @@ Jolene is in alpha — breaking changes can occur in any release.
 
 ---
 
-## [Unreleased]
+## [0.1.7]
 
 ### Breaking changes for bundle authors
+
+The terminology used by the jolene project has changed:
+
+- "packages" are now "bundles"
+- the project is described as a "plugin manager"
 
 #### Template context: `jolene.package.*` renamed to `jolene.bundle.*` (breaking)
 
@@ -55,7 +60,6 @@ name = "my-tools"
 
 Similarly, `[package.urls]` becomes `[bundle.urls]` and `package.prefix`
 becomes `bundle.prefix`.
-
 
 ### Changed
 
