@@ -1,0 +1,15 @@
+services:
+  dev:
+    build: .
+    volumes:
+      - .:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+    environment:
+      - ANTHROPIC_API_KEY
+    stdin_open: true
+    tty: true
+
+volumes:
+  cargo-registry:
+  cargo-git:
