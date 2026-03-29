@@ -2,6 +2,10 @@
 default:
     @just --list
 
+# Run clippy
+clippy:
+    cargo clippy
+
 # Build the project
 build:
     cargo build
@@ -13,3 +17,4 @@ test:
 # Install jolene to ~/.cargo/bin
 install:
     cargo install --path .
+
