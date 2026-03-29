@@ -1,15 +1,19 @@
-# Default recipe: list available recipes
 default:
     @just --list
 
-# Build the project
+clippy:
+    cargo clippy
+
 build:
     cargo build
 
-# Run tests
 test:
     cargo test
 
-# Install jolene to ~/.cargo/bin
 install:
     cargo install --path .
+
+quality:
+    @just build 
+    @just clippy 
+    @just test
