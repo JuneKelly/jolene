@@ -154,12 +154,11 @@ fn check_script_executability(content_dir: &Path, skill_name: &str) -> Vec<Strin
             if !path.is_file() {
                 continue;
             }
-            if let Ok(meta) = path.metadata() {
-                if meta.permissions().mode() & 0o111 == 0 {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        non_executable.push(name.to_string());
-                    }
-                }
+            if let Ok(meta) = path.metadata()
+                && meta.permissions().mode() & 0o111 == 0
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
+                non_executable.push(name.to_string());
             }
         }
     }

@@ -25,14 +25,13 @@ pub fn validate_url(url: &str) -> Result<()> {
     if url.contains('@') && url.contains(':') {
         // SCP-style or URL with credentials — check for embedded credentials
         // in URL-style (not SCP-style git@host:path).
-        if let Some(authority) = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")) {
-            if let Some(at_pos) = authority.find('@') {
-                if authority[..at_pos].contains(':') {
-                    bail!(
-                        "Git URL appears to contain embedded credentials. Use git credential helpers instead."
-                    );
-                }
-            }
+        if let Some(authority) = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://"))
+            && let Some(at_pos) = authority.find('@')
+            && authority[..at_pos].contains(':')
+        {
+            bail!(
+                "Git URL appears to contain embedded credentials. Use git credential helpers instead."
+            );
         }
     }
 

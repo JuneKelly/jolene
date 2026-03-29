@@ -58,10 +58,10 @@ pub fn bundle_from_symlink(target: &Path) -> Option<String> {
     // Try repos/ first, then rendered/.
     for subdir in &["repos", "rendered"] {
         let base = root.join(subdir);
-        if let Ok(rel) = target.strip_prefix(&base) {
-            if let Some(hash) = rel.components().next().and_then(|c| c.as_os_str().to_str()) {
-                return Some(hash.to_string());
-            }
+        if let Ok(rel) = target.strip_prefix(&base)
+            && let Some(hash) = rel.components().next().and_then(|c| c.as_os_str().to_str())
+        {
+            return Some(hash.to_string());
         }
     }
     None
