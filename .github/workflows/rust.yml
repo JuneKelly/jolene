@@ -18,6 +18,6 @@ jobs:
       - name: Build
         run: cargo build --verbose
       - name: Clippy
-        run: just clippy
+        run: cargo clippy --verbose
       - name: Run tests
         run: cargo test --verbose
