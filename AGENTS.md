@@ -14,7 +14,8 @@ Currently, this project is in the exploration phase, and subject to change.
 
 ## Workflow
 
-Use `bd` (beads) for task tracking.
+Use `bd` (beads) for task tracking, if available. `bd` should be initialised in
+stealth mode (`bd init --stealth`).
 
 ## Technology and Implementation
 
