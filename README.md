@@ -1,5 +1,13 @@
 # Jolene
 
+## 🚨 WARNING: Do not use on untrusted input 🚨
+
+You should never install AI skills/commands/etc without trusting the content.
+
+Neither the jolene project nor it's authors accept responsibility for your security.
+
+--------
+
 A plugin manager for coding agent commands, skills, and agents.
 
 Jolene installs bundles from git repositories into the config directories
@@ -277,6 +285,7 @@ API docs: {~ jolene.vars.doc_url ~}
 ```
 
 Available context:
+
 - `jolene.resolve("name")` — installed name of a content item, with prefix applied
 - `jolene.prefix` — the active prefix, or `""` if none
 - `jolene.target` — target slug (`"claude-code"`, `"opencode"`, `"codex"`)
