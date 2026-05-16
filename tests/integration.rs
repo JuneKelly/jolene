@@ -2563,3 +2563,481 @@ fn state_json_packages_key_migrated_to_bundles_on_mutating_command() {
         "state.json should not contain old \"packages\" key after migration"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Push tests
+// ---------------------------------------------------------------------------
+
+/// Create a bare repo with a jolene bundle inside. Uses a temporary working
+/// clone to commit content, then pushes to the bare repo. The bare repo path
+/// is what you pass to `jolene install --local` so that jolene's internal
+/// clone has its origin pointing at a bare repo (which accepts pushes).
+fn create_pushable_bundle(bare_dir: &Path, command_name: &str) {
+    // Init bare repo.
+    Command::new("git")
+        .args(["init", "--bare", "-b", "main"])
+        .current_dir(bare_dir)
+        .output()
+        .expect("git init --bare failed");
+
+    // Temporary working clone to populate the bare repo.
+    let work_dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args([
+            "clone",
+            bare_dir.to_str().unwrap(),
+            work_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("git clone failed");
+
+    // Add bundle content.
+    fs::create_dir_all(work_dir.path().join("commands")).unwrap();
+    fs::write(
+        work_dir.path().join("jolene.toml"),
+        format!(
+            r#"[bundle]
+name = "push-pkg"
+description = "A pushable test package"
+version = "0.1.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["{command_name}"]
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        work_dir.path().join("commands").join(format!("{command_name}.md")),
+        format!("# {command_name}\nOriginal content.\n"),
+    )
+    .unwrap();
+
+    // Commit and push to the bare remote.
+    let run = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(work_dir.path())
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@test.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@test.com")
+            .output()
+            .expect("git command failed")
+    };
+
+    run(&["add", "."]);
+    run(&["commit", "-m", "init"]);
+    run(&["push", "origin", "main"]);
+}
+
+/// Helper: install a pushable bundle from a bare repo and verify the symlink exists.
+fn install_pushable_bundle(
+    jolene_root: &Path,
+    jolene_home: &Path,
+    bare_dir: &Path,
+    command_name: &str,
+) {
+    let claude_root = jolene_home.join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+
+    jolene_cmd(jolene_root, jolene_home)
+        .args([
+            "install",
+            "--local",
+            bare_dir.to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    // Sanity check: symlink exists.
+    assert!(claude_root
+        .join("commands")
+        .join(format!("{command_name}.md"))
+        .is_symlink());
+}
+
+#[test]
+fn push_commits_and_pushes_changes() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let bare_dir = TempDir::new().unwrap();
+
+    create_pushable_bundle(bare_dir.path(), "hello");
+    install_pushable_bundle(
+        jolene_root.path(),
+        jolene_home.path(),
+        bare_dir.path(),
+        "hello",
+    );
+
+    // Modify the installed file through the symlink.
+    let symlink_path = jolene_home
+        .path()
+        .join(".claude/commands/hello.md");
+    fs::write(&symlink_path, "# hello\nModified content.\n").unwrap();
+
+    // Push (use the bare_dir path as the bundle identifier, since that's what --local used).
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["push", bare_dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Pushed"));
+
+    // Verify the bare remote received the commit: clone it fresh and check content.
+    let verify_dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args([
+            "clone",
+            bare_dir.path().to_str().unwrap(),
+            verify_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("verify clone failed");
+    let pushed_content =
+        fs::read_to_string(verify_dir.path().join("commands/hello.md")).unwrap();
+    assert!(
+        pushed_content.contains("Modified content"),
+        "remote should have the pushed changes"
+    );
+
+    // Verify state.json commit hash was updated.
+    let state_path = jolene_root.path().join("state.json");
+    let state: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&state_path).unwrap()).unwrap();
+    let bundles = state["bundles"].as_array().unwrap();
+    assert_eq!(bundles.len(), 1);
+    // The commit in state should match the new HEAD in the jolene clone.
+    let jolene_clone_commit = String::from_utf8(
+        Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(
+                jolene_root.path().join(
+                    bundles[0]["clone_path"].as_str().unwrap(),
+                ),
+            )
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert_eq!(
+        bundles[0]["commit"].as_str().unwrap(),
+        jolene_clone_commit.trim(),
+        "state.json commit should match the pushed commit"
+    );
+}
+
+#[test]
+fn push_clean_working_tree_reports_nothing() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let bare_dir = TempDir::new().unwrap();
+
+    create_pushable_bundle(bare_dir.path(), "hello");
+    install_pushable_bundle(
+        jolene_root.path(),
+        jolene_home.path(),
+        bare_dir.path(),
+        "hello",
+    );
+
+    // Push without making any changes.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["push", bare_dir.path().to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Nothing to push"));
+}
+
+#[test]
+fn push_dry_run_does_not_modify() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let bare_dir = TempDir::new().unwrap();
+
+    create_pushable_bundle(bare_dir.path(), "hello");
+    install_pushable_bundle(
+        jolene_root.path(),
+        jolene_home.path(),
+        bare_dir.path(),
+        "hello",
+    );
+
+    // Modify the file.
+    let symlink_path = jolene_home
+        .path()
+        .join(".claude/commands/hello.md");
+    fs::write(&symlink_path, "# hello\nDry run content.\n").unwrap();
+
+    // Get the commit hash before dry-run.
+    let state_before = fs::read_to_string(jolene_root.path().join("state.json")).unwrap();
+
+    // Dry run.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "push",
+            bare_dir.path().to_str().unwrap(),
+            "--dry-run",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Dry run"));
+
+    // State should be unchanged.
+    let state_after = fs::read_to_string(jolene_root.path().join("state.json")).unwrap();
+    let before: serde_json::Value = serde_json::from_str(&state_before).unwrap();
+    let after: serde_json::Value = serde_json::from_str(&state_after).unwrap();
+    assert_eq!(
+        before["bundles"][0]["commit"],
+        after["bundles"][0]["commit"],
+        "commit hash should not change on dry-run"
+    );
+
+    // The bare remote should NOT have the change.
+    let verify_dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args([
+            "clone",
+            bare_dir.path().to_str().unwrap(),
+            verify_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("verify clone failed");
+    let remote_content =
+        fs::read_to_string(verify_dir.path().join("commands/hello.md")).unwrap();
+    assert!(
+        !remote_content.contains("Dry run content"),
+        "remote should NOT have dry-run changes"
+    );
+}
+
+#[test]
+fn push_custom_message() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let bare_dir = TempDir::new().unwrap();
+
+    create_pushable_bundle(bare_dir.path(), "hello");
+    install_pushable_bundle(
+        jolene_root.path(),
+        jolene_home.path(),
+        bare_dir.path(),
+        "hello",
+    );
+
+    // Modify the file.
+    let symlink_path = jolene_home
+        .path()
+        .join(".claude/commands/hello.md");
+    fs::write(&symlink_path, "# hello\nCustom message test.\n").unwrap();
+
+    // Push with custom message.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "push",
+            bare_dir.path().to_str().unwrap(),
+            "--message",
+            "my custom commit message",
+        ])
+        .assert()
+        .success();
+
+    // Verify the commit message in the bare remote.
+    let verify_dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args([
+            "clone",
+            bare_dir.path().to_str().unwrap(),
+            verify_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("verify clone failed");
+    let log_output = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(verify_dir.path())
+        .output()
+        .unwrap();
+    let message = String::from_utf8_lossy(&log_output.stdout);
+    assert!(
+        message.trim() == "my custom commit message",
+        "commit message should be the custom one, got: {}",
+        message.trim()
+    );
+}
+
+#[test]
+fn push_marketplace_plugin_errors() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+
+    // Manually write a state.json with a marketplace-sourced bundle.
+    fs::create_dir_all(jolene_root.path().join("repos/aabbccdd00112233445566778899aabbccddeeff00112233445566778899aabb")).unwrap();
+    let state = serde_json::json!({
+        "bundles": [{
+            "source_kind": "github",
+            "source": "acme-corp/tools::review-plugin",
+            "clone_url": "https://github.com/acme-corp/tools.git",
+            "clone_path": "repos/aabbccdd00112233445566778899aabbccddeeff00112233445566778899aabb",
+            "branch": "main",
+            "commit": "abc1234",
+            "installed_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "marketplace": "acme-corp/tools",
+            "plugin_name": "review-plugin",
+            "installations": []
+        }]
+    });
+    fs::write(
+        jolene_root.path().join("state.json"),
+        serde_json::to_string(&state).unwrap(),
+    )
+    .unwrap();
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["push", "review-plugin"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Cannot push marketplace plugin"));
+}
+
+#[test]
+fn push_unknown_bundle_errors() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+
+    // Empty state (no bundles installed).
+    fs::create_dir_all(jolene_root.path()).unwrap();
+    fs::write(
+        jolene_root.path().join("state.json"),
+        r#"{"bundles":[]}"#,
+    )
+    .unwrap();
+
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["push", "nonexistent"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not installed"));
+}
+
+#[test]
+fn push_warns_about_templated_content() {
+    let jolene_root = TempDir::new().unwrap();
+    let jolene_home = TempDir::new().unwrap();
+    let bare_dir = TempDir::new().unwrap();
+
+    // Create a bare repo and populate it with the templated package content.
+    Command::new("git")
+        .args(["init", "--bare", "-b", "main"])
+        .current_dir(bare_dir.path())
+        .output()
+        .expect("git init --bare failed");
+
+    let work_dir = TempDir::new().unwrap();
+    Command::new("git")
+        .args([
+            "clone",
+            bare_dir.path().to_str().unwrap(),
+            work_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .expect("git clone failed");
+
+    // Reuse the same content structure as create_templated_package.
+    fs::create_dir_all(work_dir.path().join("commands")).unwrap();
+    fs::create_dir_all(work_dir.path().join("skills/analysis")).unwrap();
+    fs::write(
+        work_dir.path().join("jolene.toml"),
+        r#"[bundle]
+name = "tmpl-pkg"
+description = "A templated test package"
+version = "1.0.0"
+authors = ["Test <test@test.com>"]
+license = "MIT"
+
+[content]
+commands = ["deploy"]
+skills = ["analysis"]
+
+[template.vars]
+doc_url = "https://example.com/docs"
+show_advanced = false
+max_retries = 3
+"#,
+    )
+    .unwrap();
+    fs::write(
+        work_dir.path().join("commands/deploy.md"),
+        r#"# Deploy
+
+Run this command to deploy.
+
+Docs: {~ jolene.vars.doc_url ~}
+Retries: {~ jolene.vars.max_retries ~}
+
+{%~ if jolene.vars.show_advanced ~%}
+Advanced: enabled
+{%~ endif ~%}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        work_dir.path().join("skills/analysis/SKILL.md"),
+        r#"# Analysis Skill
+
+Target: {~ jolene.target ~}
+Prefix: {~ jolene.prefix ~}
+Bundle: {~ jolene.bundle.name ~} v{~ jolene.bundle.version ~}
+Deploy command: {~ jolene.resolve("deploy") ~}
+"#,
+    )
+    .unwrap();
+
+    git_in(work_dir.path(), &["add", "."]);
+    git_in(work_dir.path(), &["commit", "-m", "init"]);
+    git_in(work_dir.path(), &["push", "origin", "main"]);
+
+    let claude_root = jolene_home.path().join(".claude");
+    fs::create_dir_all(&claude_root).unwrap();
+
+    // Install from the bare repo.
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args([
+            "install",
+            "--local",
+            bare_dir.path().to_str().unwrap(),
+            "--to",
+            "claude-code",
+        ])
+        .assert()
+        .success();
+
+    // Modify a non-rendered file in the jolene store clone to create a dirty tree.
+    let state: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(jolene_root.path().join("state.json")).unwrap(),
+    )
+    .unwrap();
+    let clone_path = state["bundles"][0]["clone_path"].as_str().unwrap();
+    let clone_dir = jolene_root.path().join(clone_path);
+    fs::write(clone_dir.join("jolene.toml"), {
+        let original = fs::read_to_string(clone_dir.join("jolene.toml")).unwrap();
+        format!("{original}\n# modified\n")
+    })
+    .unwrap();
+
+    // Push should warn about templated items.
+    let source = state["bundles"][0]["source"].as_str().unwrap().to_string();
+    jolene_cmd(jolene_root.path(), jolene_home.path())
+        .args(["push", &source])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("templated"));
+}

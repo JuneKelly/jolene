@@ -294,6 +294,59 @@ acme-corp/tools::review-plugin
     quick-review
 ```
 
+### jolene push
+
+```
+jolene push <bundle> [--message <message>] [--dry-run]
+```
+
+- `<bundle>` — Bundle identifier (same lookup rules as `uninstall`, `update`, etc.).
+- `--message <message>` / `-m <message>` — Commit message. Defaults to
+  `"jolene push: update bundle content"`.
+- `--dry-run` — Show what would be committed without actually committing or pushing.
+
+Commits all changes in the bundle's store clone and pushes to its upstream.
+This is useful when content is edited in-place (e.g. an LLM modifies a skill
+through its installed symlink, which points into `repos/`).
+
+**Process:**
+
+1. Acquire advisory lock (same as `install`/`update`).
+2. Look up the bundle in state. Error if not found.
+3. Error if the bundle is a marketplace plugin (shared clones, upstream not owned).
+4. Warn if any installed items are templated (edits to `rendered/` copies
+   will not be included in the push).
+5. Run `git status --short` in the clone. If clean, report and exit.
+6. If `--dry-run`, show the status summary and exit.
+7. `git add -A`, `git commit -m <message>`, `git push`.
+8. Update `commit` and `updated_at` in state.json.
+
+If `git push` fails after the local commit, the commit is preserved and the
+state file is not updated. The error message includes the clone path so the
+user can resolve manually.
+
+**Example:**
+
+```
+$ jolene push junebug/review-tools
+Changes in junebug/review-tools:
+   M skills/code-analysis/SKILL.md
+[main abc1234] jolene push: update bundle content
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+Pushed junebug/review-tools (main@abc1234)
+```
+
+**Example (dry run):**
+
+```
+$ jolene push junebug/review-tools --dry-run
+Changes in junebug/review-tools:
+   M skills/code-analysis/SKILL.md
+
+Dry run: would commit and push the above changes.
+```
+
 ### jolene doctor
 
 ```
@@ -645,7 +698,7 @@ preventing corruption on interruption.
 
 **Concurrency:** Jolene uses advisory file locking (`flock(2)` on
 `~/.jolene/.lock`) to serialize state-mutating commands (`install`,
-`uninstall`, `update`). The lock is acquired before loading state and
+`uninstall`, `update`, `push`). The lock is acquired before loading state and
 held until the command completes. Read-only commands (`list`, `info`,
 `contents`, `doctor`) do not acquire the lock.
 
@@ -1266,6 +1319,28 @@ Error: Stored variable override 'old_key' is no longer declared in [template.var
 ```
 Error: Template in skills/foo/SKILL.md exceeded execution limit.
   Possible infinite loop in template logic.
+```
+
+### Push: Marketplace Plugin
+
+```
+Error: Cannot push marketplace plugin 'acme-corp/tools::review-plugin'.
+  Marketplace plugins share clones and jolene does not own their upstream.
+  Fork the plugin into its own repo and install it natively to use push.
+```
+
+### Push: Clean Working Tree
+
+```
+Nothing to push: working tree is clean for junebug/review-tools.
+```
+
+### Push: Push Failed After Commit
+
+```
+Error: git push failed in /home/user/.jolene/repos/{hash}
+  Commit was created locally but push failed.
+  Resolve manually in: ~/.jolene/repos/{hash}
 ```
 
 ### Partial Failure Rollback

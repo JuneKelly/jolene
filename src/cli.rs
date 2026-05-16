@@ -15,6 +15,7 @@ Quick start:
   Install from path:    jolene install --local /path/to/bundle
   List installed:       jolene list
   Update all:           jolene update
+  Push changes:         jolene push owner/repo
   Uninstall:            jolene uninstall owner/repo
 
 Marketplace (Claude Code plugin repos):
@@ -103,6 +104,20 @@ pub enum Command {
 
     /// Browse contents of a marketplace or installed bundle
     Contents(ContentsArgs),
+
+    /// Commit and push changes in a bundle's clone to its upstream
+    Push {
+        /// Bundle identifier: owner/repo (GitHub), absolute path (local), or URL
+        bundle: String,
+
+        /// Commit message (default: "jolene push: update bundle content")
+        #[arg(short, long, value_name = "MESSAGE")]
+        message: Option<String>,
+
+        /// Show what would be done without committing or pushing
+        #[arg(long)]
+        dry_run: bool,
+    },
 
     /// Verify health of all installations
     Doctor,

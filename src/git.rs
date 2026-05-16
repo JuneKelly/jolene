@@ -99,6 +99,58 @@ pub fn full_commit(repo_dir: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+pub fn status_short(repo_dir: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .args(["status", "--short"])
+        .current_dir(repo_dir)
+        .output()
+        .context("Failed to run git status")?;
+
+    if !output.status.success() {
+        bail!("git status failed in {}", repo_dir.display());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+pub fn add_all(repo_dir: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["add", "-A"])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to run git add")?;
+
+    if !status.success() {
+        bail!("git add failed in {}", repo_dir.display());
+    }
+    Ok(())
+}
+
+pub fn commit(repo_dir: &Path, message: &str) -> Result<()> {
+    let status = Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to run git commit")?;
+
+    if !status.success() {
+        bail!("git commit failed in {}", repo_dir.display());
+    }
+    Ok(())
+}
+
+pub fn push(repo_dir: &Path) -> Result<()> {
+    let status = Command::new("git")
+        .args(["push"])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to run git push")?;
+
+    if !status.success() {
+        bail!("git push failed in {}", repo_dir.display());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

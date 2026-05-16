@@ -32,6 +32,11 @@ fn main() {
         Command::Update { bundle } => commands::update::run(bundle.as_deref(), &out),
         Command::Info { bundle } => commands::info::run(bundle, &out),
         Command::Contents(args) => commands::contents::run(args, &out),
+        Command::Push {
+            bundle,
+            message,
+            dry_run,
+        } => commands::push::run(bundle, message.as_deref(), *dry_run, &out),
         Command::Doctor => commands::doctor::run(&out),
     };
 

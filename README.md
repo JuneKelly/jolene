@@ -180,6 +180,30 @@ jolene uninstall <bundle> [--from <target>...] [--purge]
 Removes all symlinks for the bundle. `--purge` also deletes the cloned
 repository from the local store.
 
+### Push changes back to upstream
+
+```sh
+jolene push <bundle> [--message "..."] [--dry-run]
+```
+
+When a skill or command is edited in-place (e.g. by an LLM through the
+installed symlink), the change lands directly in jolene's store clone. The
+`push` command commits and pushes those changes back to the upstream repo.
+
+```
+$ jolene push junebug/review-tools -m "update analysis patterns"
+Changes in junebug/review-tools:
+   M skills/code-analysis/SKILL.md
+
+Pushed junebug/review-tools (main@abc1234)
+```
+
+Use `--dry-run` to preview changes without committing. Marketplace plugins
+cannot be pushed (they share clones and the upstream is not owned by you).
+
+If any installed content is templated (symlinked from `rendered/` instead of
+`repos/`), push warns that those edits will not be included.
+
 ### Check installation health
 
 ```sh
