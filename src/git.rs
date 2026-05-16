@@ -61,14 +61,52 @@ pub fn clone(url: &str, dest: &Path) -> Result<()> {
 }
 
 pub fn pull(repo_dir: &Path) -> Result<()> {
-    let status = Command::new("git")
+    let output = Command::new("git")
         .args(["pull", "--ff-only"])
         .current_dir(repo_dir)
-        .status()
+        .output()
         .context("Failed to run git pull")?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("Not possible to fast-forward") || stderr.contains("fatal: Need to specify") {
+            bail!(
+                "git pull --ff-only failed in {} (local commits diverge from upstream).\n  \
+                 If you have unpushed local commits (e.g. from a failed `jolene push`),\n  \
+                 either push them manually or re-run with --force to discard local changes.",
+                repo_dir.display()
+            );
+        }
         bail!("git pull failed in {}", repo_dir.display());
+    }
+    Ok(())
+}
+
+/// Force-pull by resetting the current branch to match origin.
+/// This discards any local commits or changes.
+pub fn pull_force(repo_dir: &Path) -> Result<()> {
+    // Fetch latest from origin.
+    let status = Command::new("git")
+        .args(["fetch", "origin"])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to run git fetch")?;
+    if !status.success() {
+        bail!("git fetch failed in {}", repo_dir.display());
+    }
+
+    // Determine the current branch name.
+    let branch = current_branch(repo_dir)?;
+
+    // Reset to origin/<branch>.
+    let remote_ref = format!("origin/{}", branch);
+    let status = Command::new("git")
+        .args(["reset", "--hard", &remote_ref])
+        .current_dir(repo_dir)
+        .status()
+        .context("Failed to run git reset")?;
+    if !status.success() {
+        bail!("git reset --hard {} failed in {}", remote_ref, repo_dir.display());
     }
     Ok(())
 }

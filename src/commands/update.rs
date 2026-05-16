@@ -16,7 +16,7 @@ use crate::types::content::ContentType;
 use crate::types::state::State;
 use crate::validation::{collect_content_items, load_manifest, validate_manifest, validate_prefix};
 
-pub fn run(bundle: Option<&str>, out: &Output) -> Result<()> {
+pub fn run(bundle: Option<&str>, force: bool, out: &Output) -> Result<()> {
     let (_lock, mut app_state) = state::StateLock::acquire_and_load()?;
 
     let sources: Vec<String> = match bundle {
@@ -41,13 +41,13 @@ pub fn run(bundle: Option<&str>, out: &Output) -> Result<()> {
 
     for source in &sources {
         out.print(format!("Updating {}...", source));
-        update_one(source, &mut app_state, out)?;
+        update_one(source, &mut app_state, force, out)?;
     }
 
     Ok(())
 }
 
-fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
+fn update_one(source: &str, app_state: &mut State, force: bool, out: &Output) -> Result<()> {
     let pkg = state::find_bundle(app_state, source)?
         .ok_or_else(|| anyhow::anyhow!("Bundle '{}' not found in state.", source))?;
 
@@ -82,7 +82,12 @@ fn update_one(source: &str, app_state: &mut State, out: &Output) -> Result<()> {
 
     // 1. Pull — detect no-op early.
     let old_commit = git::full_commit(&clone_root)?;
-    git::pull(&clone_root)?;
+    if force {
+        out.verbose(format!("  Force-resetting to upstream..."));
+        git::pull_force(&clone_root)?;
+    } else {
+        git::pull(&clone_root)?;
+    }
     let new_commit = git::full_commit(&clone_root)?;
 
     if old_commit == new_commit {

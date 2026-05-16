@@ -29,7 +29,7 @@ fn main() {
             purge,
         } => commands::uninstall::run(bundle, from, *purge, &out),
         Command::List { target } => commands::list::run(target.as_deref(), &out),
-        Command::Update { bundle } => commands::update::run(bundle.as_deref(), &out),
+        Command::Update { bundle, force } => commands::update::run(bundle.as_deref(), *force, &out),
         Command::Info { bundle } => commands::info::run(bundle, &out),
         Command::Contents(args) => commands::contents::run(args, &out),
         Command::Push {

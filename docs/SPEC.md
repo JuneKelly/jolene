@@ -233,8 +233,14 @@ Installed bundles:
 ### jolene update
 
 ```
-jolene update [<bundle>]
+jolene update [<bundle>] [--force]
 ```
+
+- `--force` — Discard any local commits in the store clone and force-reset
+  to the upstream branch. This is useful when a `jolene push` created a
+  local commit but failed to push it, leaving the clone diverged from
+  upstream. Without `--force`, the `git pull --ff-only` fails and jolene
+  reports the divergence with guidance.
 
 Updates one or all bundles by pulling the latest from the default branch.
 Creates symlinks for new content, removes symlinks for deleted content,
@@ -899,7 +905,13 @@ the state file. This ensures state always reflects reality.
 ### Update: Step by Step
 
 ```
-1. git pull in the clone directory.
+1. Pull the latest from upstream.
+   - Default: git pull --ff-only. If this fails due to local commits
+     diverging from upstream (e.g. from a failed `jolene push`), abort
+     with an error directing the user to either push manually or re-run
+     with --force.
+   - With --force: git fetch origin, then git reset --hard origin/<branch>.
+     This discards any local commits or uncommitted changes in the clone.
 2. Diff content: compare current files against recorded symlinks.
 
 2b. RE-SCAN AND RE-RENDER (native bundles only)
@@ -1319,6 +1331,14 @@ Error: Stored variable override 'old_key' is no longer declared in [template.var
 ```
 Error: Template in skills/foo/SKILL.md exceeded execution limit.
   Possible infinite loop in template logic.
+```
+
+### Update: Local Commits Diverge
+
+```
+Error: git pull --ff-only failed in ~/.jolene/repos/{hash} (local commits diverge from upstream).
+  If you have unpushed local commits (e.g. from a failed `jolene push`),
+  either push them manually or re-run with --force to discard local changes.
 ```
 
 ### Push: Marketplace Plugin

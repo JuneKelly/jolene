@@ -159,11 +159,15 @@ Installed bundles:
 ### Update bundles
 
 ```sh
-jolene update [<bundle>]
+jolene update [<bundle>] [--force]
 ```
 
 Pulls the latest commits, adds symlinks for new content, and removes symlinks
 for deleted content. Omit `<bundle>` to update everything.
+
+If the store clone has local commits that diverge from upstream (e.g. from a
+failed `jolene push`), the default `--ff-only` pull will fail with guidance.
+Use `--force` to discard local commits and reset to upstream.
 
 ### Show bundle details
 

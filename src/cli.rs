@@ -94,6 +94,10 @@ pub enum Command {
     Update {
         /// Bundle to update. Omit to update all.
         bundle: Option<String>,
+
+        /// Discard local commits and force-reset to upstream
+        #[arg(long)]
+        force: bool,
     },
 
     /// Show detailed info about an installed bundle
