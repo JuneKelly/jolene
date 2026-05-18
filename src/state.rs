@@ -134,12 +134,15 @@ pub fn find_bundle<'a>(state: &'a State, name: &str) -> Result<Option<&'a Bundle
         return Ok(state.bundles.iter().find(|p| p.source == name));
     }
 
-    // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
+    // Short-name lookup: matches GitHub repo component, marketplace plugin_name,
+    // or install-time prefix.
     let matches: Vec<_> = state
         .bundles
         .iter()
         .filter(|p| {
-            p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
+            p.source.split('/').nth(1) == Some(name)
+                || p.plugin_name.as_deref() == Some(name)
+                || p.prefix.as_deref() == Some(name)
         })
         .collect();
 
@@ -149,7 +152,7 @@ pub fn find_bundle<'a>(state: &'a State, name: &str) -> Result<Option<&'a Bundle
         _ => {
             let names: Vec<_> = matches.iter().map(|p| format!("  {}", p.source)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)\n    full source URL (url bundles)",
                 name,
                 names.join("\n")
             );
@@ -166,12 +169,15 @@ pub fn find_bundle_mut<'a>(
         return Ok(state.bundles.iter_mut().find(|p| p.source == name));
     }
 
-    // Short-name lookup: matches GitHub repo component or marketplace plugin_name.
+    // Short-name lookup: matches GitHub repo component, marketplace plugin_name,
+    // or install-time prefix.
     let matches: Vec<_> = state
         .bundles
         .iter()
         .filter(|p| {
-            p.source.split('/').nth(1) == Some(name) || p.plugin_name.as_deref() == Some(name)
+            p.source.split('/').nth(1) == Some(name)
+                || p.plugin_name.as_deref() == Some(name)
+                || p.prefix.as_deref() == Some(name)
         })
         .map(|p| p.source.clone())
         .collect();
@@ -185,7 +191,7 @@ pub fn find_bundle_mut<'a>(
         _ => {
             let names: Vec<_> = matches.iter().map(|s| format!("  {}", s)).collect();
             bail!(
-                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)",
+                "Ambiguous name '{}'. Multiple matches:\n{}\n\n  Use the full identifier:\n    owner/repo (native bundles)\n    org/marketplace::plugin-name (marketplace plugins)\n    full source URL (url bundles)",
                 name,
                 names.join("\n")
             );
@@ -323,5 +329,71 @@ mod tests {
             bundles: vec![make_marketplace_bundle("acme/marketplace::review", "review")],
         };
         assert!(find_bundle(&state, "deploy").unwrap().is_none());
+    }
+
+    fn make_url_bundle(url: &str, prefix: Option<&str>) -> BundleState {
+        let src = Source::Url(url.to_string());
+        BundleState {
+            source_kind: SourceKind::Url,
+            source: url.to_string(),
+            clone_url: Some(url.to_string()),
+            clone_path: format!("repos/{}", src.store_key()),
+            branch: "main".to_string(),
+            commit: "abc123".to_string(),
+            installed_at: Utc::now(),
+            updated_at: Utc::now(),
+            installations: vec![],
+            marketplace: None,
+            plugin_name: None,
+            plugin_path: None,
+            prefix: prefix.map(|s| s.to_string()),
+            var_overrides: None,
+        }
+    }
+
+    #[test]
+    fn find_by_prefix_unambiguous() {
+        let state = State {
+            bundles: vec![
+                make_url_bundle("ssh://git@host-a/org/llm-skills.git", Some("personal")),
+                make_url_bundle("git@host-b:other/llm-skills.git", Some("inno")),
+            ],
+        };
+        let pkg = find_bundle(&state, "inno").unwrap().unwrap();
+        assert_eq!(pkg.source, "git@host-b:other/llm-skills.git");
+
+        let pkg = find_bundle(&state, "personal").unwrap().unwrap();
+        assert_eq!(pkg.source, "ssh://git@host-a/org/llm-skills.git");
+    }
+
+    #[test]
+    fn find_by_prefix_ambiguous_errors() {
+        let state = State {
+            bundles: vec![
+                make_url_bundle("ssh://git@host-a/org/tools.git", Some("shared")),
+                make_url_bundle("git@host-b:other/tools.git", Some("shared")),
+            ],
+        };
+        assert!(find_bundle(&state, "shared").is_err());
+    }
+
+    #[test]
+    fn find_by_prefix_no_match_returns_none() {
+        let state = State {
+            bundles: vec![
+                make_url_bundle("ssh://git@host/org/tools.git", Some("personal")),
+            ],
+        };
+        assert!(find_bundle(&state, "work").unwrap().is_none());
+    }
+
+    #[test]
+    fn find_by_prefix_does_not_match_without_prefix() {
+        let state = State {
+            bundles: vec![
+                make_url_bundle("ssh://git@host/org/tools.git", None),
+            ],
+        };
+        assert!(find_bundle(&state, "personal").unwrap().is_none());
     }
 }
