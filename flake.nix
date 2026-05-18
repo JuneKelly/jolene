@@ -28,6 +28,16 @@
         version = "0.1.7";
         src = ./.;
         cargoLock.lockFile = ./Cargo.lock;
+
+        # Integration tests shell out to git
+        nativeCheckInputs = [ pkgs.git ];
+
+        # Push tests need a git identity for commits
+        preCheck = ''
+          export HOME="$TMPDIR"
+          git config --global user.email "nix-build@localhost"
+          git config --global user.name "nix-build"
+        '';
       };
     };
 }

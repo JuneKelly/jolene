@@ -6,3 +6,6 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Flake-related
+result
