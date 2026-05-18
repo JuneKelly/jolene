@@ -8,6 +8,7 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
       muslPkgs = pkgs.pkgsStatic;
+      cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
     in
     {
       devShells.${system}.default = pkgs.mkShell {
@@ -24,8 +25,8 @@
       };
 
       packages.${system}.default = muslPkgs.rustPlatform.buildRustPackage {
-        pname = "jolene";
-        version = "0.1.7";
+        pname = cargoToml.package.name;
+        version = cargoToml.package.version;
         src = ./.;
         cargoLock.lockFile = ./Cargo.lock;
 
