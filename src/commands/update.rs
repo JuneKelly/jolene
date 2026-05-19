@@ -90,6 +90,16 @@ fn update_one(source: &str, app_state: &mut State, force: bool, out: &Output) ->
     }
     let new_commit = git::full_commit(&clone_root)?;
 
+    // Check for undeclared content even when up to date, so user always
+    // gets reminded about items missing from the manifest.
+    if !is_marketplace {
+        let content_dir_early = discovery::resolve_plugin_dir(&clone_root, plugin_path.as_deref())?;
+        if let Ok(m) = load_manifest(&clone_root) {
+            let declared = collect_content_items(&m);
+            discovery::warn_undeclared_content(&declared, &content_dir_early, out, "  ");
+        }
+    }
+
     if old_commit == new_commit {
         out.print(format!("  {} is already up to date.", source));
         return Ok(());

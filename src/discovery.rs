@@ -105,6 +105,63 @@ pub fn resolve_plugin_dir_lossy(clone_root: &Path, subdir: &str) -> Option<PathB
     Some(dir)
 }
 
+/// Warn about content items found on disk but not declared in the manifest.
+///
+/// Compares filesystem-discovered content against the manifest-declared items
+/// and prints a warning per content type for any undeclared items.
+pub fn warn_undeclared_content(
+    declared: &[ContentItem],
+    content_dir: &Path,
+    out: &crate::output::Output,
+    indent: &str,
+) {
+    let discovered = match discover_content(content_dir) {
+        Ok(items) => items,
+        Err(_) => return, // silently skip if scan fails
+    };
+
+    let declared_names: std::collections::HashSet<(&str, &str)> = declared
+        .iter()
+        .map(|i| (i.content_type.dir_name(), i.name.as_str()))
+        .collect();
+
+    let mut undeclared_skills: Vec<&str> = Vec::new();
+    let mut undeclared_commands: Vec<&str> = Vec::new();
+    let mut undeclared_agents: Vec<&str> = Vec::new();
+
+    for item in &discovered {
+        if !declared_names.contains(&(item.content_type.dir_name(), item.name.as_str())) {
+            match item.content_type {
+                ContentType::Skill => undeclared_skills.push(&item.name),
+                ContentType::Command => undeclared_commands.push(&item.name),
+                ContentType::Agent => undeclared_agents.push(&item.name),
+            }
+        }
+    }
+
+    if !undeclared_commands.is_empty() {
+        out.print(format!(
+            "{}Note: found commands not declared in jolene.toml: {}",
+            indent,
+            undeclared_commands.join(", ")
+        ));
+    }
+    if !undeclared_skills.is_empty() {
+        out.print(format!(
+            "{}Note: found skills not declared in jolene.toml: {}",
+            indent,
+            undeclared_skills.join(", ")
+        ));
+    }
+    if !undeclared_agents.is_empty() {
+        out.print(format!(
+            "{}Note: found agents not declared in jolene.toml: {}",
+            indent,
+            undeclared_agents.join(", ")
+        ));
+    }
+}
+
 /// Human-readable summary of discovered content, e.g. "2 commands, 1 skill".
 pub fn content_summary(items: &[ContentItem]) -> String {
     let commands = items

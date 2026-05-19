@@ -125,6 +125,9 @@ pub fn run(
     content_check::check_and_warn_skills(&items, &clone_root, out, "  ");
     content_check::check_and_warn_agents(&items, &clone_root, out, "  ");
 
+    // Warn about content on disk but not declared in the manifest
+    discovery::warn_undeclared_content(&items, &clone_root, out, "  ");
+
     // Resolve targets
     let targets = resolve_targets(to)?;
 
