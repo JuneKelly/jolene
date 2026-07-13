@@ -1,6 +1,6 @@
 # Proposal: Security Improvements
 
-**Status:** Draft
+**Status:** Ready for implementation
 **Date:** 2026-03-29
 
 ---
@@ -594,6 +594,7 @@ $ jolene doctor
 ```
 
 This catches:
+
 - Files modified in `repos/` (manual edit or git operations outside jolene).
 - Rendered copies modified in `rendered/`.
 - Replacement of symlink targets (symlink still valid, but points at different
@@ -1030,6 +1031,7 @@ $ jolene install --lockfile jolene.lock
 ```
 
 When `--lockfile` is used:
+
 - `--github`/`--local`/`--url` flags are not permitted (source comes from
   lockfile). In clap, `--lockfile` is added to the `source` `ArgGroup` so
   that it is mutually exclusive with the other source flags. The group
@@ -1307,4 +1309,3 @@ regardless of when bundles were installed.
 - **Uninstall.** Symlink removal, optional purge, shared clone detection.
 
 - **Concurrency.** Advisory file locking via `flock(2)` on `~/.jolene/.lock`.
-
