@@ -205,14 +205,28 @@ diffs in the terminal — it points you at them.
 
 #### Updating all bundles
 
-When `jolene update` is run without a specific bundle, it updates every
-installed bundle by applying the single-bundle flow to each one in turn: fetch,
-show that bundle's summary, and prompt — or auto-apply if the bundle was
-installed with `--auto-accept-updates`, or `--yes` is set. Bundles are handled
-independently: a decline, a skip, or an error on one does not stop the others.
+`jolene update` with no bundle named and no `--all` flag does nothing but print
+a usage error. Updating every installed bundle at once is a high-consequence
+operation — it re-pulls agent instructions from every upstream you track — so it
+must be requested explicitly, never triggered by a bare command or a stray
+keystroke:
 
 ```
 $ jolene update
+
+Error: jolene update requires a bundle name or --all.
+  To update one bundle:   jolene update <bundle>
+  To update every bundle: jolene update --all
+```
+
+`jolene update --all` updates every installed bundle by applying the
+single-bundle flow to each one in turn: fetch, show that bundle's summary, and
+prompt — or auto-apply if the bundle was installed with `--auto-accept-updates`,
+or `--yes` is set. Bundles are handled independently: a decline, a skip, or an
+error on one does not stop the others.
+
+```
+$ jolene update --all
 
   junebug/review-tools: 3 new commits (abc1234 → def5678)
     ~ commands/review.md         (modified)
@@ -235,11 +249,11 @@ prompt — keeps every decision scoped to a single source's changes. It also mea
 a force-pushed bundle (see *Force-push detection* below) is simply reported and
 skipped without affecting the rest of the run.
 
-**`--yes` flag:** `jolene update --yes [<bundle>]` skips confirmation and
-applies all updates. The diff summary is still printed (unless `--quiet`).
-Intended for CI and scripting.
+**`--yes` flag:** `jolene update (<bundle> | --all) --yes` skips confirmation
+and applies without prompting. The diff summary is still printed (unless
+`--quiet`). Intended for CI and scripting.
 
-**`--fetch-only` flag:** `jolene update --fetch-only [<bundle>]` fetches
+**`--fetch-only` flag:** `jolene update (<bundle> | --all) --fetch-only` fetches
 without prompting or applying. Shows what would change. Equivalent to a
 dry-run for updates.
 
@@ -276,7 +290,7 @@ $ jolene outdated
   broken-org/deleted-repo
     WARNING: Failed to fetch remote refs (repository not found or not accessible)
 
-1 bundle has updates available. Run `jolene update` to review.
+1 bundle has updates available. Run `jolene update --all` to review.
 ```
 
 #### Force-push detection
@@ -304,7 +318,7 @@ Fetching review-tools...
 A `--accept-rewrite` flag is required to proceed when a history rewrite is
 detected, and it is valid only together with a named bundle
 (`jolene update <bundle> --accept-rewrite`). It is never prompted interactively
-— the user must explicitly opt in. During `jolene update` with no bundle named,
+— the user must explicitly opt in. During `jolene update --all`,
 a force-pushed bundle is reported and skipped like any other; to accept its
 rewrite, re-run that bundle by name with `--accept-rewrite`.
 
@@ -1167,6 +1181,7 @@ errors, consistent with every other install.
 | `install` | `--auto-accept-updates` | 2 | Auto-accept this source's future updates (skip the review prompt) |
 | `install` | `--lockfile <path>` | 6 | Install from lockfile |
 | `install` | `--verify-signature` | 5 | Require signed commit |
+| `update` | `--all` | 1 | Update every installed bundle (required to update all) |
 | `update` | `--ref <ref>` | 1 | Update a ref-pinned bundle to a new ref |
 | `update` | `--yes` | 1 | Skip confirmation prompt |
 | `update` | `--fetch-only` | 1 | Fetch and show changes without applying |
