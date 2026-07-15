@@ -166,14 +166,14 @@ accept**.
 $ jolene update review-tools
 
 ╔══════════════════════════════════════════════════════════════════╗
-║  WARNING: Updated content will be read and followed by AI       ║
-║  coding agents. The changes shown below could alter agent       ║
-║  behavior. Review the diff before accepting.                    ║
-║                                                                ║
-║  Local clone:  ~/.jolene/repos/a3f2c1d8...abc1234/             ║
-║  Remote:       https://github.com/junebug/review-tools          ║
-║  Diff:         https://github.com/junebug/review-tools/compare/ ║
-║                abc1234...def5678                                ║
+║  WARNING: Updated content will be read and followed by AI        ║
+║  coding agents. The changes shown below could alter agent        ║
+║  behavior. Review the diff before accepting.                     ║
+║                                                                  ║
+║  Local clone:  ~/.jolene/repos/a3f2c1d8...abc1234/               ║
+║  Remote:       https://github.com/junebug/review-tools           ║
+║  Diff:         https://github.com/junebug/review-tools/compare/  ║
+║                abc1234...def5678                                 ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 Fetching review-tools...
