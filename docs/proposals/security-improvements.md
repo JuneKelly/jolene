@@ -153,6 +153,22 @@ Error: review-tools was installed with --ref v1.2.0.
 This prevents the semantic surprise of `--ref v1.2.0` silently pulling from
 `main` on the next update.
 
+Conversely, passing `--ref` to `jolene update` on a bundle that was **not**
+installed with `--ref` is an error:
+
+```
+$ jolene update review-tools --ref v2.0.0
+
+Error: review-tools was not installed with --ref.
+  --ref on update is only valid for ref-pinned bundles.
+  To pin this bundle to a specific ref, reinstall with --ref:
+    jolene install --github owner/review-tools --ref v2.0.0
+```
+
+This keeps the state model simple: a bundle is either ref-pinned (update
+requires `--ref`) or default-branch-tracking (update never takes `--ref`).
+Crossing between modes requires a reinstall.
+
 Note: removing a ref pin is done by reinstalling without `--ref`, as shown
 above. The `jolene trust --clear` command (introduced later, in Layer 5) is
 a separate mechanism for removing signature verification requirements.
@@ -276,12 +292,18 @@ that bundle is reported with a warning and the command continues with the
 remaining bundles. The exit code is 0 if at least one bundle was checked
 successfully.
 
+Ref-pinned bundles (installed with `--ref`) are reported as such and
+skipped — a pinned commit SHA has no upstream branch to compare against.
+
 ```
 $ jolene outdated
 
   junebug/review-tools
     Installed: abc1234 (2026-03-15)
     Remote:    def5678 (3 commits ahead)
+
+  alice/pinned-tools (ref-pinned)
+    Installed: bbb3333 (2026-03-10)
 
   acme-corp/tools::review-plugin
     Installed: fed9876 (2026-03-20)
@@ -777,7 +799,10 @@ other read-only commands (`list`, `info`, `contents`, `doctor`) — but the atom
 rename means a concurrent query sees either the old log or the rewritten one,
 never a partial file.
 
-A warning is printed when the log exceeds 10 MB, suggesting `--clear-before`.
+A warning is emitted after any operation that appends to the audit log
+(`install`, `update`, `uninstall`, `audit --clear-before`) when the log
+exceeds 10 MB, suggesting `--clear-before`. Read-only `jolene audit` queries
+do not emit the warning.
 
 ---
 
