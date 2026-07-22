@@ -1089,16 +1089,52 @@ When `--lockfile` is used:
 A lockfile records what should be installed, but only the person who ran
 `jolene lock` ever reviewed the content. To make review explicit across teams:
 
-**New flag: `jolene lock --mark-reviewed [--by <name>]`**
+**Review stamp preservation.** When `jolene lock` regenerates the lockfile
+from current state, it preserves existing `reviewed_by` and `reviewed_at`
+stamps for any bundle whose commit SHA has not changed. A bundle at a new
+commit loses its review stamp — new content requires a new review. This
+means review stamps survive normal lockfile regeneration (e.g., after adding
+a new bundle) and only need to be re-applied when content actually changes.
 
-Stamps every bundle in the current state as reviewed. Sets `reviewed_by` and
-`reviewed_at` fields in the lockfile. Run this after manually reviewing each
-bundle's content (by following the pointers jolene prints on install and
-inspecting the files).
+**New flag: `jolene lock --mark-reviewed[=<bundles>] [--by <name>]`**
+
+Marks bundles as reviewed. Without a value, marks every bundle in the
+lockfile (re-stamping already-reviewed bundles with the current timestamp).
+With a comma-separated list of bundle names, marks only those bundles —
+existing review stamps on other bundles are left untouched.
 
 ```
 $ jolene lock --mark-reviewed --by "junebug"
 Wrote jolene.lock (3 bundles, all marked reviewed)
+
+$ jolene lock --mark-reviewed=review-tools,formatter --by "junebug"
+Wrote jolene.lock (2 bundles marked reviewed: review-tools, formatter)
+```
+
+`--by` is optional; when omitted only `reviewed_at` is recorded.
+
+**New flag: `jolene lock --unmark-reviewed=<bundles>`**
+
+Removes review stamps from the specified comma-separated bundles. Useful
+for correcting mistakes or withdrawing a review that is no longer valid.
+
+```
+$ jolene lock --unmark-reviewed=review-tools
+Wrote jolene.lock (removed review from review-tools)
+```
+
+**Workflow example — team review with multiple reviewers:**
+
+```
+$ jolene lock
+Wrote jolene.lock (3 bundles)
+
+# Alice reviews two bundles, Bob reviews one
+$ jolene lock --mark-reviewed=review-tools,formatter --by "alice"
+Wrote jolene.lock (2 bundles marked reviewed: review-tools, formatter)
+
+$ jolene lock --mark-reviewed=deploy-tools --by "bob"
+Wrote jolene.lock (1 bundle marked reviewed: deploy-tools)
 ```
 
 **Lockfile install shows review status:**
@@ -1193,6 +1229,14 @@ consent gate for the whole file: it prints the per-bundle review-status summary
 verification is always enforced), and a non-interactive run without `--yes`
 errors, consistent with every other install.
 
+**Review stamp preservation across regenerations.** When `jolene lock`
+regenerates the lockfile from current state, review stamps are preserved for
+bundles whose commit SHA has not changed. A bundle at a new commit loses its
+review stamp — the review was of different content. This means a team can mark
+bundles incrementally (`--mark-reviewed=foo`) across multiple regenerations
+without losing previous marks, and a bare `jolene lock` (to pick up a newly
+added bundle) does not wipe the team's review work.
+
 ---
 
 ## Summary of CLI Changes
@@ -1220,7 +1264,7 @@ errors, consistent with every other install.
 | `jolene outdated` | 1 | Check for upstream updates without applying |
 | `jolene audit` | 4 | Query the audit trail |
 | `jolene trust` | 5 | Manage signing key trust |
-| `jolene lock` | 6 | Generate, mark-reviewed, or verify a lockfile |
+| `jolene lock` | 6 | Generate, review-mark, or verify a lockfile. `--mark-reviewed[=<bundles>]`, `--unmark-reviewed=<bundles>`, `--by <name>`, `--verify`.
 
 ### Modified commands
 
